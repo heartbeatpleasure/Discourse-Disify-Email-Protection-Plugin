@@ -4,6 +4,7 @@ import { service } from "@ember/service";
 import { tracked } from "@glimmer/tracking";
 import { ajax } from "discourse/lib/ajax";
 import { popupAjaxError } from "discourse/lib/ajax-error";
+import { i18n } from "discourse-i18n";
 
 export default class AdminPluginsDisifyEmailProtectionReviewController extends Controller {
   @service toasts;
@@ -47,7 +48,7 @@ export default class AdminPluginsDisifyEmailProtectionReviewController extends C
     this.loadReview();
   }
 
-  async perform(item, action, successMessage) {
+  async perform(item, action, successMessageKey) {
     this.workingId = item.id;
     try {
       await ajax(
@@ -55,7 +56,7 @@ export default class AdminPluginsDisifyEmailProtectionReviewController extends C
         { type: "POST" }
       );
       await this.loadReview();
-      this.toasts.success({ data: { message: successMessage } });
+      this.toasts.success({ data: { message: i18n(successMessageKey) } });
     } catch (error) {
       popupAjaxError(error);
     } finally {
@@ -65,17 +66,17 @@ export default class AdminPluginsDisifyEmailProtectionReviewController extends C
 
   @action
   approve(item) {
-    return this.perform(item, "approve", "Review item approved temporarily.");
+    return this.perform(item, "approve", "admin.disify_email_protection.review.approve_success");
   }
 
   @action
   reject(item) {
-    return this.perform(item, "reject", "Review item rejected.");
+    return this.perform(item, "reject", "admin.disify_email_protection.review.reject_success");
   }
 
   @action
   recheck(item) {
-    return this.perform(item, "recheck", "Email risk rechecked.");
+    return this.perform(item, "recheck", "admin.disify_email_protection.review.recheck_success");
   }
 
   @action

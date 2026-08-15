@@ -4,6 +4,7 @@ import { service } from "@ember/service";
 import { tracked } from "@glimmer/tracking";
 import { ajax } from "discourse/lib/ajax";
 import { popupAjaxError } from "discourse/lib/ajax-error";
+import { i18n } from "discourse-i18n";
 
 export default class AdminPluginsDisifyEmailProtectionHealthController extends Controller {
   @service toasts;
@@ -42,7 +43,7 @@ export default class AdminPluginsDisifyEmailProtectionHealthController extends C
         "/admin/plugins/disify-email-protection/health/test.json",
         { type: "POST" }
       );
-      this.toasts.success({ data: { message: "DISIFY service test completed." } });
+      this.toasts.success({ data: { message: i18n("admin.disify_email_protection.health.test_success") } });
     } catch (error) {
       popupAjaxError(error);
     } finally {
@@ -59,7 +60,7 @@ export default class AdminPluginsDisifyEmailProtectionHealthController extends C
         { type: "POST" }
       );
       await this.loadHealth();
-      this.toasts.success({ data: { message: "Circuit breaker reset." } });
+      this.toasts.success({ data: { message: i18n("admin.disify_email_protection.health.reset_success") } });
     } catch (error) {
       popupAjaxError(error);
     } finally {

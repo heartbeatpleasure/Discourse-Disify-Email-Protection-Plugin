@@ -4,6 +4,7 @@ import { service } from "@ember/service";
 import { tracked } from "@glimmer/tracking";
 import { ajax } from "discourse/lib/ajax";
 import { popupAjaxError } from "discourse/lib/ajax-error";
+import { i18n } from "discourse-i18n";
 
 export default class AdminPluginsDisifyEmailProtectionToolsController extends Controller {
   @service dialog;
@@ -20,6 +21,37 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
   @tracked exceptionValue = "";
   @tracked exceptionReason = "";
   @tracked isSavingException = false;
+
+  get currentScanStatus() {
+    return this.data?.scan?.status || "idle";
+  }
+
+  get showResumeScan() {
+    return this.currentScanStatus === "paused";
+  }
+
+  get canStartScan() {
+    return !["running", "waiting", "paused"].includes(this.currentScanStatus);
+  }
+
+  get startScanDisabled() {
+    return this.isScanning || !this.canStartScan;
+  }
+
+  get scanStatusMessage() {
+    switch (this.currentScanStatus) {
+      case "running":
+        return i18n("admin.disify_email_protection.tools.scan_status_running");
+      case "waiting":
+        return i18n("admin.disify_email_protection.tools.scan_status_waiting");
+      case "paused":
+        return i18n("admin.disify_email_protection.tools.scan_status_paused");
+      case "completed":
+        return i18n("admin.disify_email_protection.tools.scan_status_completed");
+      default:
+        return null;
+    }
+  }
 
   resetState() {
     this.data = undefined;
@@ -79,18 +111,26 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
 
   @action
   startScan() {
+    if (!this.canStartScan) {
+      this.toasts.warning({ data: { message: i18n("admin.disify_email_protection.tools.scan_already_running") } });
+      return;
+    }
+
     const userCount = Number(this.data?.scan_estimate?.users || 0);
     const dataNotice =
       this.scanMode === "domain_only"
-        ? "Only email domains will be sent to DISIFY."
+        ? i18n("admin.disify_email_protection.tools.scan_notice_domain_only")
         : this.scanMode === "trusted_providers"
-          ? "Full email addresses will be sent only for configured alias-sensitive mailbox providers; other users use domain-only checks."
-          : "Full email addresses for all scanned users will be sent to DISIFY.";
+          ? i18n("admin.disify_email_protection.tools.scan_notice_trusted_providers")
+          : i18n("admin.disify_email_protection.tools.scan_notice_all");
 
     this.dialog.confirm({
-      title: "Start existing-user scan?",
-      message: `The scan covers up to ${userCount} existing users. ${dataNotice} It never suspends or deletes accounts automatically.`,
-      confirmButtonLabel: "Start scan",
+      title: i18n("admin.disify_email_protection.tools.start_scan_dialog_title"),
+      message: i18n("admin.disify_email_protection.tools.start_scan_dialog_message", {
+        count: userCount,
+        data_notice: dataNotice,
+      }),
+      confirmButtonLabel: i18n("admin.disify_email_protection.tools.start_scan_dialog_confirm"),
       didConfirm: () => this.startScanNow(),
     });
   }
@@ -103,7 +143,7 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
         data: { scan_mode: this.scanMode },
       });
       await this.loadTools();
-      this.toasts.success({ data: { message: "Existing-user scan started." } });
+      this.toasts.success({ data: { message: i18n("admin.disify_email_protection.tools.start_scan_success") } });
     } catch (error) {
       popupAjaxError(error);
     } finally {
@@ -120,7 +160,7 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
         { type: "POST" }
       );
       await this.loadTools();
-      this.toasts.success({ data: { message: "Existing-user scan resumed." } });
+      this.toasts.success({ data: { message: i18n("admin.disify_email_protection.tools.resume_scan_success") } });
     } catch (error) {
       popupAjaxError(error);
     } finally {
@@ -161,7 +201,7 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
       this.exceptionValue = "";
       this.exceptionReason = "";
       await this.loadTools();
-      this.toasts.success({ data: { message: "Policy exception added." } });
+      this.toasts.success({ data: { message: i18n("admin.disify_email_protection.tools.exception_add_success") } });
     } catch (error) {
       popupAjaxError(error);
     } finally {
@@ -177,7 +217,7 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
         { type: "DELETE" }
       );
       await this.loadTools();
-      this.toasts.success({ data: { message: "Policy exception removed." } });
+      this.toasts.success({ data: { message: i18n("admin.disify_email_protection.tools.exception_delete_success") } });
     } catch (error) {
       popupAjaxError(error);
     }

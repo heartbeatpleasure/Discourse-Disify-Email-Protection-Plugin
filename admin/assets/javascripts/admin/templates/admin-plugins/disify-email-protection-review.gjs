@@ -12,18 +12,20 @@ export default RouteTemplate(
   <template>
     <style>
       .dep-review { display: grid; gap: 1rem; }
-      .dep-review h1, .dep-review p { margin: 0; }
+      .dep-review h1, .dep-review h2, .dep-review p { margin: 0; }
       .dep-review__hero, .dep-review__panel { padding: 1rem 1.15rem; border: 1px solid var(--primary-low); border-radius: 16px; background: var(--secondary); }
       .dep-review__hero { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
       .dep-review__copy { display: grid; gap: .35rem; }
       .dep-review__muted { color: var(--primary-medium); }
       .dep-review__actions { display: flex; flex-wrap: wrap; gap: .45rem; align-items: center; }
+      .dep-review__toolbar { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
+      .dep-review__control { min-height: 2.75rem; padding: .55rem .75rem; box-sizing: border-box; }
       .dep-review__table-wrap { overflow-x: auto; }
       .dep-review table { width: 100%; border-collapse: collapse; }
       .dep-review th, .dep-review td { padding: .55rem .65rem; border-bottom: 1px solid var(--primary-low); text-align: left; vertical-align: top; }
       .dep-review__signals { max-width: 24rem; overflow-wrap: anywhere; color: var(--primary-medium); }
-      .dep-review__pager { display: flex; justify-content: space-between; gap: .5rem; margin-top: .8rem; }
-      @media (max-width: 650px) { .dep-review__hero { flex-direction: column; } }
+      .dep-review__pager { display: flex; justify-content: space-between; gap: .5rem; margin-top: .8rem; align-items: center; }
+      @media (max-width: 750px) { .dep-review__hero, .dep-review__toolbar, .dep-review__pager { flex-direction: column; align-items: stretch; } }
     </style>
     <div class="dep-review">
       <section class="dep-review__hero">
@@ -32,26 +34,35 @@ export default RouteTemplate(
           <p class="dep-review__muted">{{i18n "admin.disify_email_protection.review.description"}}</p>
         </div>
         <div class="dep-review__actions">
-          <select value={{@controller.state}} {{on "change" @controller.changeState}} aria-label="Review state">
-            <option value="pending">Pending</option>
-            <option value="approved">Approved</option>
-            <option value="rejected">Rejected</option>
-            <option value="expired">Expired</option>
-          </select>
-          <a class="btn" href={{toolsUrl}}>Tools</a>
           <a class="btn" href={{overviewUrl}}>{{i18n "admin.disify_email_protection.review.back"}}</a>
+          <a class="btn" href={{toolsUrl}}>{{i18n "admin.disify_email_protection.tools.short_title"}}</a>
+        </div>
+      </section>
+
+      <section class="dep-review__panel">
+        <div class="dep-review__toolbar">
+          <div class="dep-review__copy">
+            <h2>{{i18n "admin.disify_email_protection.review.filter_title"}}</h2>
+            <p class="dep-review__muted">{{i18n "admin.disify_email_protection.review.filter_description"}}</p>
+          </div>
+          <select class="dep-review__control" value={{@controller.state}} {{on "change" @controller.changeState}} aria-label={{i18n "admin.disify_email_protection.review.filter_label"}}>
+            <option value="pending">{{i18n "admin.disify_email_protection.review.state_pending"}}</option>
+            <option value="approved">{{i18n "admin.disify_email_protection.review.state_approved"}}</option>
+            <option value="rejected">{{i18n "admin.disify_email_protection.review.state_rejected"}}</option>
+            <option value="expired">{{i18n "admin.disify_email_protection.review.state_expired"}}</option>
+          </select>
         </div>
       </section>
 
       <section class="dep-review__panel dep-review__table-wrap">
         {{#if @controller.data.items.length}}
           <table>
-            <thead><tr><th>Created</th><th>User</th><th>Domain</th><th>Reason</th><th>Confidence</th><th>Signals</th><th>State</th><th>Actions</th></tr></thead>
+            <thead><tr><th>{{i18n "admin.disify_email_protection.review.col_created"}}</th><th>{{i18n "admin.disify_email_protection.review.col_user"}}</th><th>{{i18n "admin.disify_email_protection.review.col_domain"}}</th><th>{{i18n "admin.disify_email_protection.review.col_reason"}}</th><th>{{i18n "admin.disify_email_protection.review.col_confidence"}}</th><th>{{i18n "admin.disify_email_protection.review.col_signals"}}</th><th>{{i18n "admin.disify_email_protection.review.col_state"}}</th><th>{{i18n "admin.disify_email_protection.review.col_actions"}}</th></tr></thead>
             <tbody>
               {{#each @controller.data.items as |item|}}
                 <tr>
                   <td>{{item.created_at}}</td>
-                  <td>{{#if item.user}}{{item.user.username}}{{else}}Anonymous signup{{/if}}</td>
+                  <td>{{#if item.user}}{{item.user.username}}{{else}}{{i18n "admin.disify_email_protection.review.anonymous_signup"}}{{/if}}</td>
                   <td>{{item.email_domain}}</td>
                   <td>{{item.reason}}</td>
                   <td>{{item.confidence}}</td>
@@ -73,12 +84,12 @@ export default RouteTemplate(
             </tbody>
           </table>
           <div class="dep-review__pager">
-            <button class="btn" type="button" {{on "click" @controller.previousPage}}>Previous</button>
-            <span>Page {{@controller.page}} - {{@controller.data.total}} items</span>
-            <button class="btn" type="button" {{on "click" @controller.nextPage}}>Next</button>
+            <button class="btn" type="button" {{on "click" @controller.previousPage}}>{{i18n "admin.disify_email_protection.review.previous"}}</button>
+            <span>{{i18n "admin.disify_email_protection.review.page_summary" page=@controller.page total=@controller.data.total}}</span>
+            <button class="btn" type="button" {{on "click" @controller.nextPage}}>{{i18n "admin.disify_email_protection.review.next"}}</button>
           </div>
         {{else}}
-          <p class="dep-review__muted">No review items match the selected state.</p>
+          <p class="dep-review__muted">{{i18n "admin.disify_email_protection.review.empty"}}</p>
         {{/if}}
       </section>
     </div>

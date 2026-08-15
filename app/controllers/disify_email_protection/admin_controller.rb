@@ -151,6 +151,11 @@ module ::DisifyEmailProtection
       render_json_dump(success: true, scan: ExistingUserScan.resume!(actor: current_user))
     end
 
+    def cancel_scan
+      rate_limit_admin_action!("cancel-scan", 5)
+      render_json_dump(success: true, scan: ExistingUserScan.cancel!(actor: current_user))
+    end
+
     def create_exception
       rate_limit_admin_action!("create-exception")
       kind = params.require(:kind).to_s

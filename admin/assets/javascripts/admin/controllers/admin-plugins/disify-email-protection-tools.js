@@ -4,6 +4,7 @@ import { service } from "@ember/service";
 import { tracked } from "@glimmer/tracking";
 import { ajax } from "discourse/lib/ajax";
 import { popupAjaxError } from "discourse/lib/ajax-error";
+import { formatDisifyDate } from "../../lib/disify-date";
 import { i18n } from "discourse-i18n";
 
 export default class AdminPluginsDisifyEmailProtectionToolsController extends Controller {
@@ -17,6 +18,7 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
   @tracked isChecking = false;
   @tracked scanMode = "domain_only";
   @tracked isScanning = false;
+  @tracked isCancellingScan = false;
   @tracked exceptionKind = "allow_domain";
   @tracked exceptionValue = "";
   @tracked exceptionReason = "";
@@ -30,12 +32,49 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
     return this.currentScanStatus === "paused";
   }
 
+  get showCancelScan() {
+    return ["running", "waiting", "paused"].includes(this.currentScanStatus);
+  }
+
+  get scanStatusLabel() {
+    switch (this.currentScanStatus) {
+      case "idle":
+        return i18n("admin.disify_email_protection.tools.scan_state_idle");
+      case "running":
+        return i18n("admin.disify_email_protection.tools.scan_state_running");
+      case "waiting":
+        return i18n("admin.disify_email_protection.tools.scan_state_waiting");
+      case "paused":
+        return i18n("admin.disify_email_protection.tools.scan_state_paused");
+      case "completed":
+        return i18n("admin.disify_email_protection.tools.scan_state_completed");
+      case "cancelled":
+        return i18n("admin.disify_email_protection.tools.scan_state_cancelled");
+      default:
+        return this.currentScanStatus;
+    }
+  }
+
+  get scanLastErrorLabel() {
+    const value = this.data?.scan?.last_error;
+    if (!value) {
+      return "—";
+    }
+    if (value === "stale_scan") {
+      return i18n("admin.disify_email_protection.tools.scan_error_stale");
+    }
+    if (value === "circuit_open") {
+      return i18n("admin.disify_email_protection.tools.scan_error_circuit_open");
+    }
+    return value;
+  }
+
   get canStartScan() {
     return !["running", "waiting", "paused"].includes(this.currentScanStatus);
   }
 
   get startScanDisabled() {
-    return this.isScanning || !this.canStartScan;
+    return this.isScanning || this.isCancellingScan || !this.canStartScan;
   }
 
   get scanStatusMessage() {
@@ -48,6 +87,8 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
         return i18n("admin.disify_email_protection.tools.scan_status_paused");
       case "completed":
         return i18n("admin.disify_email_protection.tools.scan_status_completed");
+      case "cancelled":
+        return i18n("admin.disify_email_protection.tools.scan_status_cancelled");
       default:
         return null;
     }
@@ -61,6 +102,7 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
     this.isChecking = false;
     this.scanMode = "domain_only";
     this.isScanning = false;
+    this.isCancellingScan = false;
     this.exceptionKind = "allow_domain";
     this.exceptionValue = "";
     this.exceptionReason = "";
@@ -71,7 +113,14 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
   async loadTools() {
     this.isLoading = true;
     try {
-      this.data = await ajax("/admin/plugins/disify-email-protection/tools.json");
+      const data = await ajax("/admin/plugins/disify-email-protection/tools.json");
+      this.data = {
+        ...data,
+        exceptions: (data?.exceptions || []).map((item) => ({
+          ...item,
+          expires_at_display: formatDisifyDate(item.expires_at),
+        })),
+      };
       this.scanMode = this.data?.scan_estimate?.configured_mode || "domain_only";
     } catch (error) {
       popupAjaxError(error);
@@ -165,6 +214,41 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
       popupAjaxError(error);
     } finally {
       this.isScanning = false;
+    }
+  }
+
+
+  @action
+  cancelScan() {
+    if (!this.showCancelScan || this.isCancellingScan) {
+      return;
+    }
+
+    this.dialog.confirm({
+      title: i18n("admin.disify_email_protection.tools.cancel_scan_dialog_title"),
+      message: i18n("admin.disify_email_protection.tools.cancel_scan_dialog_message"),
+      confirmButtonLabel: i18n("admin.disify_email_protection.tools.cancel_scan_dialog_confirm"),
+      didConfirm: () => this.cancelScanNow(),
+    });
+  }
+
+  async cancelScanNow() {
+    this.isCancellingScan = true;
+    try {
+      await ajax(
+        "/admin/plugins/disify-email-protection/tools/scan/cancel.json",
+        { type: "POST" }
+      );
+      await this.loadTools();
+      this.toasts.success({
+        data: {
+          message: i18n("admin.disify_email_protection.tools.cancel_scan_success"),
+        },
+      });
+    } catch (error) {
+      popupAjaxError(error);
+    } finally {
+      this.isCancellingScan = false;
     }
   }
 

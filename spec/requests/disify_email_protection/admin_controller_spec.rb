@@ -24,4 +24,35 @@ RSpec.describe DisifyEmailProtection::AdminController do
       expect(json.to_json).not_to include(SiteSetting.disify_email_protection_api_key.to_s) if SiteSetting.disify_email_protection_api_key.present?
     end
   end
+  describe "POST /admin/plugins/disify-email-protection/tools/scan/cancel.json" do
+    after do
+      PluginStore.remove(DisifyEmailProtection::STORE_NAMESPACE, DisifyEmailProtection::ExistingUserScan::STATE_KEY)
+    end
+
+    it "requires an administrator" do
+      sign_in(user)
+      post "/admin/plugins/disify-email-protection/tools/scan/cancel.json"
+      expect(response.status).to eq(404).or eq(403)
+    end
+
+    it "cancels an active scan for administrators" do
+      PluginStore.set(
+        DisifyEmailProtection::STORE_NAMESPACE,
+        DisifyEmailProtection::ExistingUserScan::STATE_KEY,
+        {
+          "scan_id" => "request-spec-scan",
+          "status" => "running",
+          "started_at" => 1.minute.ago.iso8601,
+          "last_activity_at" => Time.zone.now.iso8601,
+        },
+      )
+
+      sign_in(admin)
+      post "/admin/plugins/disify-email-protection/tools/scan/cancel.json"
+
+      expect(response.status).to eq(200)
+      expect(response.parsed_body.dig("scan", "status")).to eq("cancelled")
+    end
+  end
+
 end

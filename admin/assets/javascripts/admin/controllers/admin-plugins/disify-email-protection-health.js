@@ -4,6 +4,7 @@ import { service } from "@ember/service";
 import { tracked } from "@glimmer/tracking";
 import { ajax } from "discourse/lib/ajax";
 import { popupAjaxError } from "discourse/lib/ajax-error";
+import { formatDisifyDate } from "../../lib/disify-date";
 import { i18n } from "discourse-i18n";
 
 export default class AdminPluginsDisifyEmailProtectionHealthController extends Controller {
@@ -25,9 +26,10 @@ export default class AdminPluginsDisifyEmailProtectionHealthController extends C
   async loadHealth() {
     this.isLoading = true;
     try {
-      this.data = await ajax(
+      const data = await ajax(
         "/admin/plugins/disify-email-protection/health.json"
       );
+      this.data = this.withDisplayDates(data);
     } catch (error) {
       popupAjaxError(error);
     } finally {
@@ -39,16 +41,36 @@ export default class AdminPluginsDisifyEmailProtectionHealthController extends C
   async runTest() {
     this.isTesting = true;
     try {
-      this.data = await ajax(
+      const data = await ajax(
         "/admin/plugins/disify-email-protection/health/test.json",
         { type: "POST" }
       );
+      this.data = this.withDisplayDates(data);
       this.toasts.success({ data: { message: i18n("admin.disify_email_protection.health.test_success") } });
     } catch (error) {
       popupAjaxError(error);
     } finally {
       this.isTesting = false;
     }
+  }
+
+  withDisplayDates(data) {
+    if (!data) {
+      return data;
+    }
+
+    return {
+      ...data,
+      provider: {
+        ...(data.provider || {}),
+        last_success_at_display: formatDisifyDate(data.provider?.last_success_at),
+        reset_at_display: formatDisifyDate(data.provider?.reset_at),
+      },
+      circuit_breaker: {
+        ...(data.circuit_breaker || {}),
+        open_until_display: formatDisifyDate(data.circuit_breaker?.open_until),
+      },
+    };
   }
 
   @action

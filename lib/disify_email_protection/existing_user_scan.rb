@@ -5,77 +5,123 @@ module ::DisifyEmailProtection
     module_function
 
     STATE_KEY = "existing_user_scan"
+    STATE_MUTEX_KEY = "disify-email-protection-existing-user-scan-state"
     NORMAL_BATCH_DELAY = 65.seconds
+    STALE_AFTER = 10.minutes
+    ACTIVE_STATUSES = %w[running waiting].freeze
+    BLOCKING_STATUSES = %w[running waiting paused].freeze
 
     def start!(actor:, scan_mode: nil)
       raise Discourse::InvalidAccess unless actor&.admin?
       raise Discourse::InvalidParameters.new(:scan) unless SiteSetting.disify_email_protection_manual_scan_enabled
 
-      current = state
-      if %w[running waiting paused].include?(current["status"])
-        raise Discourse::InvalidParameters.new(:scan_already_running)
-      end
-
       mode = scan_mode.to_s.presence || SiteSetting.disify_email_protection_manual_scan_full_email_mode.to_s
       raise Discourse::InvalidParameters.new(:scan_mode) unless %w[domain_only trusted_providers all].include?(mode)
 
-      scan_id = SecureRandom.hex(8)
-      payload = {
-        "scan_id" => scan_id,
-        "status" => "running",
-        "mode" => mode,
-        "started_at" => Time.zone.now.iso8601,
-        "started_by_id" => actor.id,
-        "cursor" => 0,
-        "processed" => 0,
-        "flagged" => 0,
-        "total" => User.real.where(staged: false).count,
-        "last_error" => nil,
-      }
-      store(payload)
-      Jobs.enqueue(:disify_existing_user_scan, scan_id: scan_id)
+      payload = with_state_lock do
+        current = normalize_stale_without_lock!(raw_state)
+        if BLOCKING_STATUSES.include?(current["status"])
+          raise Discourse::InvalidParameters.new(:scan_already_running)
+        end
+
+        now = Time.zone.now
+        scan_id = SecureRandom.hex(8)
+        new_state = {
+          "scan_id" => scan_id,
+          "status" => "running",
+          "mode" => mode,
+          "started_at" => now.iso8601,
+          "started_by_id" => actor.id,
+          "last_activity_at" => now.iso8601,
+          "next_run_at" => nil,
+          "cursor" => 0,
+          "processed" => 0,
+          "flagged" => 0,
+          "total" => User.real.where(staged: false).count,
+          "last_error" => nil,
+        }
+        store(new_state)
+        new_state
+      end
+
+      Jobs.enqueue(:disify_existing_user_scan, scan_id: payload["scan_id"])
       payload
     end
 
     def resume!(actor:)
       raise Discourse::InvalidAccess unless actor&.admin?
-      current = state
-      raise Discourse::InvalidParameters.new(:scan) unless current["status"] == "paused"
 
-      current["status"] = "running"
-      current["last_error"] = nil
-      store(current)
+      current = with_state_lock do
+        scan = normalize_stale_without_lock!(raw_state)
+        raise Discourse::InvalidParameters.new(:scan) unless scan["status"] == "paused"
+
+        scan["status"] = "running"
+        scan["last_error"] = nil
+        scan["paused_at"] = nil
+        scan["last_activity_at"] = Time.zone.now.iso8601
+        scan["next_run_at"] = nil
+        store(scan)
+        scan
+      end
+
       Jobs.enqueue(:disify_existing_user_scan, scan_id: current["scan_id"])
       current
     end
 
+    def cancel!(actor:)
+      raise Discourse::InvalidAccess unless actor&.admin?
+
+      with_state_lock do
+        current = normalize_stale_without_lock!(raw_state)
+        next current unless BLOCKING_STATUSES.include?(current["status"])
+
+        now = Time.zone.now.iso8601
+        current["status"] = "cancelled"
+        current["cancelled_at"] = now
+        current["cancelled_by_id"] = actor.id
+        current["last_activity_at"] = now
+        current["next_run_at"] = nil
+        current["last_error"] = nil
+        store(current)
+        current
+      end
+    end
+
     def process_batch!(scan_id)
-      current = state
-      return if current["scan_id"] != scan_id || !%w[running waiting].include?(current["status"])
+      current = with_state_lock do
+        scan = normalize_stale_without_lock!(raw_state)
+        next nil unless scan["scan_id"] == scan_id && ACTIVE_STATUSES.include?(scan["status"])
+
+        scan["status"] = "running"
+        scan["last_activity_at"] = Time.zone.now.iso8601
+        scan["next_run_at"] = nil
+        scan["last_error"] = nil if scan["last_error"] == "circuit_open"
+        store(scan)
+        scan
+      end
+      return if current.nil?
 
       if CircuitBreaker.open?
         wait_for_provider!(current, scan_id, "circuit_open")
         return
       end
 
-      current["status"] = "running"
-      current["last_error"] = nil if current["last_error"] == "circuit_open"
-
       batch_size = [[SiteSetting.disify_email_protection_max_scan_batch_size.to_i, 10].max, 500].min
       users = User.real.where(staged: false).where("id > ?", current["cursor"].to_i).order(:id).limit(batch_size).to_a
 
       if users.empty?
-        current["status"] = "completed"
-        current["completed_at"] = Time.zone.now.iso8601
-        store(current)
+        complete_if_active!(current, scan_id)
         return
       end
 
       users.each do |user|
+        return unless still_active?(scan_id)
+
         email = user.email.to_s
         if email.blank?
           current["processed"] = current["processed"].to_i + 1
           current["cursor"] = user.id
+          current["last_activity_at"] = Time.zone.now.iso8601
           next
         end
 
@@ -96,6 +142,8 @@ module ::DisifyEmailProtection
           domain_only: domain_only,
           mode_override: "monitor",
         )
+
+        return unless still_active?(scan_id)
 
         if result.status == "unavailable"
           wait_for_provider!(current, scan_id, result.reason.to_s.presence || "provider_unavailable")
@@ -124,30 +172,38 @@ module ::DisifyEmailProtection
 
         current["processed"] = current["processed"].to_i + 1
         current["cursor"] = user.id
+        current["last_activity_at"] = Time.zone.now.iso8601
       end
 
-      store(current)
-      Jobs.enqueue_in(NORMAL_BATCH_DELAY, :disify_existing_user_scan, { scan_id: scan_id })
+      scheduled = schedule_next_if_active!(current, scan_id)
+      Jobs.enqueue_in(NORMAL_BATCH_DELAY, :disify_existing_user_scan, { scan_id: scan_id }) if scheduled
     rescue StandardError => e
-      current ||= state
-      current["status"] = "paused"
-      current["last_error"] = e.class.to_s
-      store(current)
+      pause_error_if_active!(scan_id, e.class.to_s)
       Rails.logger.warn("[disify_email_protection] existing scan paused class=#{e.class}")
     end
 
     def wait_for_provider!(current, scan_id, reason)
-      current["status"] = "waiting"
-      current["last_error"] = reason
-      store(current)
-
       open_until = CircuitBreaker.open_until
       delay = if open_until.present? && open_until > Time.zone.now
         [(open_until - Time.zone.now).ceil + 5, NORMAL_BATCH_DELAY.to_i].max.seconds
       else
         NORMAL_BATCH_DELAY
       end
-      Jobs.enqueue_in(delay, :disify_existing_user_scan, { scan_id: scan_id })
+
+      scheduled = with_state_lock do
+        latest = raw_state
+        next false unless latest["scan_id"] == scan_id && ACTIVE_STATUSES.include?(latest["status"])
+
+        now = Time.zone.now
+        current["status"] = "waiting"
+        current["last_error"] = reason
+        current["last_activity_at"] = now.iso8601
+        current["next_run_at"] = (now + delay).iso8601
+        store(current)
+        true
+      end
+
+      Jobs.enqueue_in(delay, :disify_existing_user_scan, { scan_id: scan_id }) if scheduled
     end
 
     def risky_result?(result)
@@ -155,8 +211,101 @@ module ::DisifyEmailProtection
     end
 
     def state
+      with_state_lock { normalize_stale_without_lock!(raw_state) }
+    end
+
+    def raw_state
       value = PluginStore.get(STORE_NAMESPACE, STATE_KEY)
       value.is_a?(Hash) ? value.deep_stringify_keys : { "status" => "idle" }
+    end
+
+    def still_active?(scan_id)
+      latest = raw_state
+      latest["scan_id"] == scan_id && ACTIVE_STATUSES.include?(latest["status"])
+    end
+
+    def complete_if_active!(current, scan_id)
+      with_state_lock do
+        latest = raw_state
+        next false unless latest["scan_id"] == scan_id && ACTIVE_STATUSES.include?(latest["status"])
+
+        now = Time.zone.now.iso8601
+        current["status"] = "completed"
+        current["completed_at"] = now
+        current["last_activity_at"] = now
+        current["next_run_at"] = nil
+        store(current)
+        true
+      end
+    end
+
+    def schedule_next_if_active!(current, scan_id)
+      with_state_lock do
+        latest = raw_state
+        next false unless latest["scan_id"] == scan_id && ACTIVE_STATUSES.include?(latest["status"])
+
+        now = Time.zone.now
+        current["status"] = "running"
+        current["last_activity_at"] = now.iso8601
+        current["next_run_at"] = (now + NORMAL_BATCH_DELAY).iso8601
+        store(current)
+        true
+      end
+    end
+
+    def pause_error_if_active!(scan_id, error_code)
+      with_state_lock do
+        latest = raw_state
+        next latest unless latest["scan_id"] == scan_id && ACTIVE_STATUSES.include?(latest["status"])
+
+        now = Time.zone.now.iso8601
+        latest["status"] = "paused"
+        latest["paused_at"] = now
+        latest["last_activity_at"] = now
+        latest["next_run_at"] = nil
+        latest["last_error"] = error_code
+        store(latest)
+        latest
+      end
+    end
+
+    def normalize_stale_without_lock!(current)
+      return current unless ACTIVE_STATUSES.include?(current["status"])
+      return current unless stale?(current)
+
+      now = Time.zone.now.iso8601
+      current["status"] = "paused"
+      current["paused_at"] = now
+      current["last_activity_at"] = now
+      current["next_run_at"] = nil
+      current["last_error"] = "stale_scan"
+      store(current)
+      current
+    end
+
+    def stale?(current)
+      now = Time.zone.now
+      next_run_at = parse_time(current["next_run_at"])
+
+      if next_run_at.present?
+        return false if next_run_at >= now
+        return next_run_at < now - STALE_AFTER
+      end
+
+      last_activity_at = parse_time(current["last_activity_at"] || current["started_at"])
+      last_activity_at.present? && last_activity_at < now - STALE_AFTER
+    end
+
+    def parse_time(value)
+      return nil if value.blank?
+
+      Time.zone.parse(value.to_s)
+    rescue ArgumentError, TypeError
+      nil
+    end
+
+    def with_state_lock(&block)
+      DistributedMutex.synchronize(STATE_MUTEX_KEY, validity: 10, &block)
     end
 
     def store(value)

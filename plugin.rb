@@ -169,6 +169,10 @@ after_initialize do
            "disify_email_protection/admin#resume_scan",
          defaults: { format: :json },
          constraints: AdminConstraint.new
+    post "/admin/plugins/disify-email-protection/tools/scan/cancel" =>
+           "disify_email_protection/admin#cancel_scan",
+         defaults: { format: :json },
+         constraints: AdminConstraint.new
     post "/admin/plugins/disify-email-protection/exceptions" =>
            "disify_email_protection/admin#create_exception",
          defaults: { format: :json },

@@ -4,6 +4,7 @@ import { service } from "@ember/service";
 import { tracked } from "@glimmer/tracking";
 import { ajax } from "discourse/lib/ajax";
 import { popupAjaxError } from "discourse/lib/ajax-error";
+import { formatDisifyDate } from "../../lib/disify-date";
 import { i18n } from "discourse-i18n";
 
 export default class AdminPluginsDisifyEmailProtectionReviewController extends Controller {
@@ -31,9 +32,17 @@ export default class AdminPluginsDisifyEmailProtectionReviewController extends C
         state: this.state,
         page: String(this.page),
       });
-      this.data = await ajax(
+      const data = await ajax(
         `/admin/plugins/disify-email-protection/review.json?${query}`
       );
+      this.data = {
+        ...data,
+        items: (data?.items || []).map((item) => ({
+          ...item,
+          created_at_display: formatDisifyDate(item.created_at),
+          resolved_at_display: formatDisifyDate(item.resolved_at),
+        })),
+      };
     } catch (error) {
       popupAjaxError(error);
     } finally {

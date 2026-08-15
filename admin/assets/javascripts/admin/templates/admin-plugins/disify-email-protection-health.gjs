@@ -104,12 +104,12 @@ export default RouteTemplate(
         <section class="dep-page__panel">
           <h2>{{i18n "admin.disify_email_protection.health.provider_quota"}}</h2>
           <div class="dep-page__grid">
-            <div class="dep-page__item"><div class="dep-page__label">{{i18n "admin.disify_email_protection.health.label_last_success"}}</div><div class="dep-page__value">{{@controller.data.provider.last_success_at}}</div></div>
+            <div class="dep-page__item"><div class="dep-page__label">{{i18n "admin.disify_email_protection.health.label_last_success"}}</div><div class="dep-page__value">{{@controller.data.provider.last_success_at_display}}</div></div>
             <div class="dep-page__item"><div class="dep-page__label">{{i18n "admin.disify_email_protection.health.label_last_error"}}</div><div class="dep-page__value">{{@controller.data.provider.last_error_code}}</div></div>
             <div class="dep-page__item"><div class="dep-page__label">{{i18n "admin.disify_email_protection.health.label_last_latency"}}</div><div class="dep-page__value">{{@controller.data.provider.last_latency_ms}}</div></div>
             <div class="dep-page__item"><div class="dep-page__label">{{i18n "admin.disify_email_protection.health.label_rate_limit"}}</div><div class="dep-page__value">{{@controller.data.provider.rate_limit_limit}}</div></div>
             <div class="dep-page__item"><div class="dep-page__label">{{i18n "admin.disify_email_protection.health.label_remaining"}}</div><div class="dep-page__value">{{@controller.data.provider.rate_limit_remaining}}</div></div>
-            <div class="dep-page__item"><div class="dep-page__label">{{i18n "admin.disify_email_protection.health.label_reset_at"}}</div><div class="dep-page__value">{{@controller.data.provider.reset_at}}</div></div>
+            <div class="dep-page__item"><div class="dep-page__label">{{i18n "admin.disify_email_protection.health.label_reset_at"}}</div><div class="dep-page__value">{{@controller.data.provider.reset_at_display}}</div></div>
           </div>
         </section>
 
@@ -126,7 +126,7 @@ export default RouteTemplate(
           <div class="dep-page__grid">
             <div class="dep-page__item"><div class="dep-page__label">{{i18n "admin.disify_email_protection.health.label_state"}}</div><div class="dep-page__value">{{@controller.data.circuit_breaker.state}}</div></div>
             <div class="dep-page__item"><div class="dep-page__label">{{i18n "admin.disify_email_protection.health.label_reason"}}</div><div class="dep-page__value">{{@controller.data.circuit_breaker.reason}}</div></div>
-            <div class="dep-page__item"><div class="dep-page__label">{{i18n "admin.disify_email_protection.health.label_open_until"}}</div><div class="dep-page__value">{{@controller.data.circuit_breaker.open_until}}</div></div>
+            <div class="dep-page__item"><div class="dep-page__label">{{i18n "admin.disify_email_protection.health.label_open_until"}}</div><div class="dep-page__value">{{@controller.data.circuit_breaker.open_until_display}}</div></div>
           </div>
         </section>
 

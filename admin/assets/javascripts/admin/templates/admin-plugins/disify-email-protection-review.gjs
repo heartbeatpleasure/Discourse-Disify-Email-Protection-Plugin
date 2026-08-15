@@ -112,7 +112,7 @@ export default RouteTemplate(
             <tbody>
               {{#each @controller.data.items as |item|}}
                 <tr>
-                  <td>{{item.created_at}}</td>
+                  <td>{{item.created_at_display}}</td>
                   <td>{{#if item.user}}{{item.user.username}}{{else}}{{i18n "admin.disify_email_protection.review.anonymous_signup"}}{{/if}}</td>
                   <td>{{item.email_domain}}</td>
                   <td>{{item.reason}}</td>

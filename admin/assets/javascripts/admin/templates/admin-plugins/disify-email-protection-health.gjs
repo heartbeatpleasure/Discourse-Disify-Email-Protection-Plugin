@@ -11,19 +11,64 @@ const settingsUrl = getURL(
 export default RouteTemplate(
   <template>
     <style>
-      .dep-page { display: grid; gap: 1rem; }
+      .dep-page {
+        --dep-surface: var(--secondary);
+        --dep-surface-alt: var(--primary-very-low);
+        --dep-border: var(--primary-low);
+        --dep-muted: var(--primary-medium);
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
       .dep-page h1, .dep-page h2, .dep-page p { margin: 0; }
-      .dep-page__hero, .dep-page__panel { padding: 1rem 1.15rem; border: 1px solid var(--primary-low); border-radius: 16px; background: var(--secondary); }
-      .dep-page__hero { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
-      .dep-page__copy { display: grid; gap: .35rem; }
-      .dep-page__muted { color: var(--primary-medium); }
-      .dep-page__actions { display: flex; flex-wrap: wrap; gap: .5rem; }
-      .dep-page__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; }
-      .dep-page__item { padding: .75rem; border-radius: 12px; background: var(--primary-very-low); }
-      .dep-page__label { color: var(--primary-medium); font-size: var(--font-down-1); font-weight: 700; }
+      .dep-page__hero, .dep-page__panel {
+        min-width: 0;
+        padding: 1.2rem 1.35rem;
+        border: 1px solid var(--dep-border);
+        border-radius: 18px;
+        background: var(--dep-surface);
+        box-shadow: 0 1px 2px rgb(0 0 0 / 3%);
+      }
+      .dep-page__hero, .dep-page__panel-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+      }
+      .dep-page__copy {
+        display: flex;
+        min-width: 0;
+        flex: 1 1 auto;
+        flex-direction: column;
+        gap: .35rem;
+      }
+      .dep-page__muted { color: var(--dep-muted); }
+      .dep-page__hero-actions {
+        display: flex;
+        flex: 0 0 auto;
+        flex-wrap: nowrap;
+        align-items: center;
+        justify-content: flex-end;
+        gap: .5rem;
+        margin-left: auto;
+      }
+      .dep-page__hero-actions .btn,
+      .dep-page__panel-header > .btn { white-space: nowrap; }
+      .dep-page__panel-header > .btn { flex: 0 0 auto; }
+      .dep-page__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; margin-top: .85rem; }
+      .dep-page__item { min-width: 0; padding: .75rem; border-radius: 12px; background: var(--dep-surface-alt); }
+      .dep-page__label { color: var(--dep-muted); font-size: var(--font-down-1); font-weight: 700; }
       .dep-page__value { margin-top: .2rem; overflow-wrap: anywhere; font-weight: 600; }
+      @media (max-width: 900px) {
+        .dep-page__hero { flex-direction: column; }
+        .dep-page__hero-actions { align-self: flex-end; flex-wrap: wrap; margin-left: 0; }
+      }
       @media (max-width: 800px) { .dep-page__grid { grid-template-columns: 1fr 1fr; } }
-      @media (max-width: 600px) { .dep-page__hero { flex-direction: column; } .dep-page__grid { grid-template-columns: 1fr; } }
+      @media (max-width: 650px) {
+        .dep-page__panel-header { flex-direction: column; }
+        .dep-page__panel-header > .btn { align-self: flex-end; }
+        .dep-page__grid { grid-template-columns: 1fr; }
+      }
     </style>
     <div class="dep-page">
       <section class="dep-page__hero">
@@ -31,7 +76,7 @@ export default RouteTemplate(
           <h1>{{i18n "admin.disify_email_protection.health.title"}}</h1>
           <p class="dep-page__muted">{{i18n "admin.disify_email_protection.health.description"}}</p>
         </div>
-        <div class="dep-page__actions">
+        <div class="dep-page__hero-actions">
           <a class="btn" href={{overviewUrl}}>{{i18n "admin.disify_email_protection.health.back"}}</a>
           <a class="btn" href={{settingsUrl}}>{{i18n "admin.disify_email_protection.open_settings"}}</a>
           <button class="btn" type="button" {{on "click" @controller.loadHealth}} disabled={{@controller.isLoading}}>
@@ -69,7 +114,7 @@ export default RouteTemplate(
         </section>
 
         <section class="dep-page__panel">
-          <div class="dep-page__actions" style="justify-content: space-between; align-items: center;">
+          <div class="dep-page__panel-header">
             <div class="dep-page__copy">
               <h2>{{i18n "admin.disify_email_protection.health.circuit_breaker"}}</h2>
               <p class="dep-page__muted">{{i18n "admin.disify_email_protection.health.circuit_breaker_description"}}</p>

@@ -2,7 +2,7 @@ en:
   site_settings:
     disify_email_protection_enabled: "Enable disposable email and deliverability protection using DISIFY."
     disify_email_protection_api_key: "DISIFY API key. Leave blank to use anonymous API access. An authenticated free account is recommended for production."
-    disify_email_protection_api_auth_mode: "Authentication header used for the DISIFY API key."
+    disify_email_protection_api_auth_mode: "Authentication header used for the DISIFY API key. DISIFY supports both options; x_api_key is the recommended default unless you specifically need Bearer authentication."
     disify_email_protection_mode: "Protection mode: monitor records risk without blocking, review requires staff review for actionable results, enforce blocks configured high-risk results."
     disify_email_protection_fail_open: "Allow email actions to continue when DISIFY is unavailable or rate limited. Recommended to avoid a third-party outage blocking registration."
     disify_email_protection_timeout_ms: "Maximum time in milliseconds allowed for a real-time DISIFY request."

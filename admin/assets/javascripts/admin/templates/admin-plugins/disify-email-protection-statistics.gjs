@@ -8,24 +8,75 @@ const overviewUrl = getURL("/admin/plugins/disify-email-protection");
 export default RouteTemplate(
   <template>
     <style>
-      .dep-stats { display: grid; gap: 1rem; }
+      .dep-stats {
+        --dep-surface: var(--secondary);
+        --dep-surface-alt: var(--primary-very-low);
+        --dep-border: var(--primary-low);
+        --dep-muted: var(--primary-medium);
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
       .dep-stats h1, .dep-stats h2, .dep-stats p { margin: 0; }
-      .dep-stats__hero, .dep-stats__panel { padding: 1rem 1.15rem; border: 1px solid var(--primary-low); border-radius: 16px; background: var(--secondary); }
-      .dep-stats__hero { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
-      .dep-stats__copy { display: grid; gap: .35rem; }
-      .dep-stats__muted { color: var(--primary-medium); }
-      .dep-stats__actions { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
-      .dep-stats__toolbar { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
-      .dep-stats__control { min-height: 2.75rem; padding: .55rem .75rem; box-sizing: border-box; }
+      .dep-stats__hero, .dep-stats__panel {
+        min-width: 0;
+        padding: 1.2rem 1.35rem;
+        border: 1px solid var(--dep-border);
+        border-radius: 18px;
+        background: var(--dep-surface);
+        box-shadow: 0 1px 2px rgb(0 0 0 / 3%);
+      }
+      .dep-stats__hero {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+      }
+      .dep-stats__copy {
+        display: flex;
+        min-width: 0;
+        flex: 1 1 auto;
+        flex-direction: column;
+        gap: .35rem;
+      }
+      .dep-stats__muted { color: var(--dep-muted); }
+      .dep-stats__actions {
+        display: flex;
+        flex: 0 0 auto;
+        flex-wrap: nowrap;
+        align-items: center;
+        justify-content: flex-end;
+        gap: .5rem;
+        margin-left: auto;
+      }
+      .dep-stats__actions .btn { white-space: nowrap; }
+      .dep-stats__toolbar { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; }
+      .dep-stats__control {
+        width: min(18rem, 100%);
+        min-height: 42px;
+        padding: 0 .85rem;
+        border: 1px solid var(--dep-border);
+        border-radius: 12px;
+        background: var(--dep-surface-alt);
+        box-sizing: border-box;
+      }
       .dep-stats__grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
-      .dep-stats__metric { padding: .8rem; border-radius: 12px; background: var(--primary-very-low); }
-      .dep-stats__label { color: var(--primary-medium); font-size: var(--font-down-1); font-weight: 700; }
-      .dep-stats__value { margin-top: .2rem; font-size: var(--font-up-2); font-weight: 700; }
+      .dep-stats__metric { min-width: 0; padding: .8rem; border-radius: 12px; background: var(--dep-surface-alt); }
+      .dep-stats__label { color: var(--dep-muted); font-size: var(--font-down-1); font-weight: 700; }
+      .dep-stats__value { margin-top: .2rem; font-size: var(--font-up-2); font-weight: 700; overflow-wrap: anywhere; }
       .dep-stats__table-wrap { overflow-x: auto; }
       .dep-stats table { width: 100%; border-collapse: collapse; }
-      .dep-stats th, .dep-stats td { padding: .55rem .65rem; border-bottom: 1px solid var(--primary-low); text-align: left; white-space: nowrap; }
-      @media (max-width: 900px) { .dep-stats__grid { grid-template-columns: repeat(2, 1fr); } }
-      @media (max-width: 700px) { .dep-stats__hero, .dep-stats__toolbar { flex-direction: column; align-items: stretch; } .dep-stats__grid { grid-template-columns: 1fr; } }
+      .dep-stats th, .dep-stats td { padding: .55rem .65rem; border-bottom: 1px solid var(--dep-border); text-align: left; white-space: nowrap; }
+      @media (max-width: 900px) {
+        .dep-stats__hero { flex-direction: column; }
+        .dep-stats__actions { align-self: flex-end; margin-left: 0; }
+        .dep-stats__grid { grid-template-columns: repeat(2, 1fr); }
+      }
+      @media (max-width: 700px) {
+        .dep-stats__toolbar { flex-direction: column; align-items: stretch; }
+        .dep-stats__control { align-self: flex-end; }
+        .dep-stats__grid { grid-template-columns: 1fr; }
+      }
     </style>
     <div class="dep-stats">
       <section class="dep-stats__hero">

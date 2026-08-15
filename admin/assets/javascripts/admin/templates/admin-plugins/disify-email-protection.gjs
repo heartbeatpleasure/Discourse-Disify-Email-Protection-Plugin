@@ -37,7 +37,8 @@ export default RouteTemplate(
         gap: 1rem;
         padding: 1.25rem 1.35rem;
       }
-      .dep-admin__hero-copy { display: grid; gap: .45rem; max-width: 760px; }
+      .dep-admin__hero-copy { display: grid; min-width: 0; flex: 1 1 auto; gap: .45rem; max-width: 760px; }
+      .dep-admin__hero > .btn { flex: 0 0 auto; margin-left: auto; white-space: nowrap; }
       .dep-admin__hero-copy p, .dep-admin__muted, .dep-admin__card p { color: var(--dep-muted); }
       .dep-admin__status-row, .dep-admin__metrics {
         display: grid;
@@ -84,8 +85,11 @@ export default RouteTemplate(
       .dep-admin__badge.is-primary { border-color: var(--tertiary-low); background: var(--tertiary-low); color: var(--tertiary); }
       .dep-admin__action { margin-top: auto; color: var(--tertiary); font-weight: 600; }
       @media (max-width: 850px) { .dep-admin__status-row, .dep-admin__metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-      @media (max-width: 600px) {
+      @media (max-width: 700px) {
         .dep-admin__hero { flex-direction: column; }
+        .dep-admin__hero > .btn { align-self: flex-end; margin-left: 0; }
+      }
+      @media (max-width: 600px) {
         .dep-admin__status-row, .dep-admin__metrics { grid-template-columns: 1fr; }
       }
     </style>
@@ -105,19 +109,19 @@ export default RouteTemplate(
         <h2>{{i18n "admin.disify_email_protection.current_status"}}</h2>
         <div class="dep-admin__status-row">
           <div class="dep-admin__metric">
-            <div class="dep-admin__metric-label">Status</div>
+            <div class="dep-admin__metric-label">{{i18n "admin.disify_email_protection.status_label"}}</div>
             <div class="dep-admin__metric-value">{{@model.health.overall}}</div>
           </div>
           <div class="dep-admin__metric">
-            <div class="dep-admin__metric-label">Protection mode</div>
+            <div class="dep-admin__metric-label">{{i18n "admin.disify_email_protection.protection_mode_label"}}</div>
             <div class="dep-admin__metric-value">{{@model.health.configuration.mode}}</div>
           </div>
           <div class="dep-admin__metric">
-            <div class="dep-admin__metric-label">Checks today</div>
+            <div class="dep-admin__metric-label">{{i18n "admin.disify_email_protection.checks_today_label"}}</div>
             <div class="dep-admin__metric-value">{{@model.today.checked}}</div>
           </div>
           <div class="dep-admin__metric">
-            <div class="dep-admin__metric-label">Pending reviews</div>
+            <div class="dep-admin__metric-label">{{i18n "admin.disify_email_protection.pending_reviews_label"}}</div>
             <div class="dep-admin__metric-value">{{@model.pending_reviews}}</div>
           </div>
         </div>

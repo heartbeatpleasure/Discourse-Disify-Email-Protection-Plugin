@@ -11,21 +11,72 @@ const toolsUrl = getURL("/admin/plugins/disify-email-protection-tools");
 export default RouteTemplate(
   <template>
     <style>
-      .dep-review { display: grid; gap: 1rem; }
+      .dep-review {
+        --dep-surface: var(--secondary);
+        --dep-surface-alt: var(--primary-very-low);
+        --dep-border: var(--primary-low);
+        --dep-muted: var(--primary-medium);
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
       .dep-review h1, .dep-review h2, .dep-review p { margin: 0; }
-      .dep-review__hero, .dep-review__panel { padding: 1rem 1.15rem; border: 1px solid var(--primary-low); border-radius: 16px; background: var(--secondary); }
-      .dep-review__hero { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
-      .dep-review__copy { display: grid; gap: .35rem; }
-      .dep-review__muted { color: var(--primary-medium); }
-      .dep-review__actions { display: flex; flex-wrap: wrap; gap: .45rem; align-items: center; }
-      .dep-review__toolbar { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
-      .dep-review__control { min-height: 2.75rem; padding: .55rem .75rem; box-sizing: border-box; }
+      .dep-review__hero, .dep-review__panel {
+        min-width: 0;
+        padding: 1.2rem 1.35rem;
+        border: 1px solid var(--dep-border);
+        border-radius: 18px;
+        background: var(--dep-surface);
+        box-shadow: 0 1px 2px rgb(0 0 0 / 3%);
+      }
+      .dep-review__hero {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+      }
+      .dep-review__copy {
+        display: flex;
+        min-width: 0;
+        flex: 1 1 auto;
+        flex-direction: column;
+        gap: .35rem;
+      }
+      .dep-review__muted { color: var(--dep-muted); }
+      .dep-review__actions {
+        display: flex;
+        flex: 0 0 auto;
+        flex-wrap: nowrap;
+        align-items: center;
+        justify-content: flex-end;
+        gap: .5rem;
+        margin-left: auto;
+      }
+      .dep-review__actions .btn { white-space: nowrap; }
+      .dep-review__toolbar { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; }
+      .dep-review__control {
+        width: min(18rem, 100%);
+        min-height: 42px;
+        padding: 0 .85rem;
+        border: 1px solid var(--dep-border);
+        border-radius: 12px;
+        background: var(--dep-surface-alt);
+        box-sizing: border-box;
+      }
       .dep-review__table-wrap { overflow-x: auto; }
       .dep-review table { width: 100%; border-collapse: collapse; }
-      .dep-review th, .dep-review td { padding: .55rem .65rem; border-bottom: 1px solid var(--primary-low); text-align: left; vertical-align: top; }
-      .dep-review__signals { max-width: 24rem; overflow-wrap: anywhere; color: var(--primary-medium); }
+      .dep-review th, .dep-review td { padding: .55rem .65rem; border-bottom: 1px solid var(--dep-border); text-align: left; vertical-align: top; }
+      .dep-review__signals { max-width: 24rem; overflow-wrap: anywhere; color: var(--dep-muted); }
       .dep-review__pager { display: flex; justify-content: space-between; gap: .5rem; margin-top: .8rem; align-items: center; }
-      @media (max-width: 750px) { .dep-review__hero, .dep-review__toolbar, .dep-review__pager { flex-direction: column; align-items: stretch; } }
+      @media (max-width: 900px) {
+        .dep-review__hero { flex-direction: column; }
+        .dep-review__actions { align-self: flex-end; flex-wrap: wrap; margin-left: 0; }
+      }
+      @media (max-width: 700px) {
+        .dep-review__toolbar { flex-direction: column; align-items: stretch; }
+        .dep-review__control { align-self: flex-end; }
+        .dep-review__pager { flex-direction: column; align-items: stretch; }
+      }
     </style>
     <div class="dep-review">
       <section class="dep-review__hero">

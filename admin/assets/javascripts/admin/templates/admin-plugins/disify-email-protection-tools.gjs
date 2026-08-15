@@ -10,35 +10,89 @@ const reviewUrl = getURL("/admin/plugins/disify-email-protection-review");
 export default RouteTemplate(
   <template>
     <style>
-      .dep-tools { display: grid; gap: 1rem; }
+      .dep-tools {
+        --dep-surface: var(--secondary);
+        --dep-surface-alt: var(--primary-very-low);
+        --dep-border: var(--primary-low);
+        --dep-muted: var(--primary-medium);
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
       .dep-tools h1, .dep-tools h2, .dep-tools p { margin: 0; }
-      .dep-tools__hero, .dep-tools__panel { padding: 1rem 1.15rem; border: 1px solid var(--primary-low); border-radius: 16px; background: var(--secondary); }
-      .dep-tools__hero { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
-      .dep-tools__copy { display: grid; gap: .35rem; }
-      .dep-tools__muted { color: var(--primary-medium); }
-      .dep-tools__actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
-      .dep-tools__form { display: grid; grid-template-columns: minmax(18rem, 1fr) auto; gap: .75rem; margin-top: .8rem; align-items: center; }
-      .dep-tools__form--scan { grid-template-columns: minmax(24rem, 32rem) auto auto; }
+      .dep-tools__hero, .dep-tools__panel {
+        min-width: 0;
+        padding: 1.2rem 1.35rem;
+        border: 1px solid var(--dep-border);
+        border-radius: 18px;
+        background: var(--dep-surface);
+        box-shadow: 0 1px 2px rgb(0 0 0 / 3%);
+      }
+      .dep-tools__hero {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+      }
+      .dep-tools__copy {
+        display: flex;
+        min-width: 0;
+        flex: 1 1 auto;
+        flex-direction: column;
+        gap: .35rem;
+      }
+      .dep-tools__muted { color: var(--dep-muted); }
+      .dep-tools__actions {
+        display: flex;
+        flex: 0 0 auto;
+        flex-wrap: nowrap;
+        align-items: center;
+        justify-content: flex-end;
+        gap: .5rem;
+        margin-left: auto;
+      }
+      .dep-tools__actions .btn { white-space: nowrap; }
+      .dep-tools__form { display: grid; grid-template-columns: minmax(18rem, 1fr) auto; gap: .75rem; margin-top: .9rem; align-items: center; }
+      .dep-tools__form--scan { grid-template-columns: minmax(24rem, 32rem) auto auto; justify-content: start; }
       .dep-tools__form--three { grid-template-columns: minmax(14rem, 1.1fr) minmax(24rem, 2fr) minmax(16rem, 1.2fr) auto; }
       .dep-tools__control,
       .dep-tools__button,
       .dep-tools input,
       .dep-tools select,
       .dep-tools button { box-sizing: border-box; }
-      .dep-tools__control { width: 100%; min-height: 2.75rem; padding: .55rem .75rem; }
-      .dep-tools select.dep-tools__control { padding-right: 2.25rem; }
-      .dep-tools__button { min-height: 2.75rem; white-space: nowrap; }
-      .dep-tools__result, .dep-tools__scan { margin-top: .8rem; padding: .8rem; border-radius: 12px; background: var(--primary-very-low); overflow-wrap: anywhere; }
-      .dep-tools__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .7rem; }
-      .dep-tools__item { padding: .7rem; border-radius: 12px; background: var(--primary-very-low); }
-      .dep-tools__label { color: var(--primary-medium); font-size: var(--font-down-1); font-weight: 700; }
+      .dep-tools__control {
+        width: 100%;
+        min-height: 42px;
+        padding: 0 .85rem;
+        border: 1px solid var(--dep-border);
+        border-radius: 12px;
+        background: var(--dep-surface);
+        line-height: 1.35;
+      }
+      .dep-tools select.dep-tools__control { padding-right: 2.5rem; }
+      .dep-tools__button { min-height: 42px; white-space: nowrap; }
+      .dep-tools__result, .dep-tools__scan { margin-top: .8rem; padding: .8rem; border-radius: 12px; background: var(--dep-surface-alt); overflow-wrap: anywhere; }
+      .dep-tools__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .7rem; margin-top: .85rem; }
+      .dep-tools__item { min-width: 0; padding: .7rem; border-radius: 12px; background: var(--dep-surface-alt); }
+      .dep-tools__label { color: var(--dep-muted); font-size: var(--font-down-1); font-weight: 700; }
       .dep-tools__value { margin-top: .2rem; font-weight: 600; overflow-wrap: anywhere; }
       .dep-tools__exceptions { margin-top: .8rem; width: 100%; border-collapse: collapse; }
-      .dep-tools__exceptions th, .dep-tools__exceptions td { padding: .5rem .6rem; border-bottom: 1px solid var(--primary-low); text-align: left; vertical-align: top; }
-      .dep-tools__toolbar { display: flex; justify-content: space-between; gap: .75rem; align-items: flex-start; margin-bottom: .8rem; }
+      .dep-tools__exceptions th, .dep-tools__exceptions td { padding: .5rem .6rem; border-bottom: 1px solid var(--dep-border); text-align: left; vertical-align: top; }
       .dep-tools__status-note { margin-top: .8rem; }
-      @media (max-width: 980px) { .dep-tools__form--scan { grid-template-columns: 1fr 1fr; } .dep-tools__form--three { grid-template-columns: 1fr 1fr; } .dep-tools__grid { grid-template-columns: 1fr 1fr; } }
-      @media (max-width: 700px) { .dep-tools__hero { flex-direction: column; } .dep-tools__toolbar { flex-direction: column; } .dep-tools__form, .dep-tools__form--scan, .dep-tools__form--three, .dep-tools__grid { grid-template-columns: 1fr; } }
+      @media (max-width: 1100px) {
+        .dep-tools__form--three { grid-template-columns: minmax(13rem, 1fr) minmax(20rem, 1.7fr); }
+      }
+      @media (max-width: 980px) {
+        .dep-tools__form--scan, .dep-tools__form--three { grid-template-columns: 1fr 1fr; }
+        .dep-tools__grid { grid-template-columns: 1fr 1fr; }
+      }
+      @media (max-width: 900px) {
+        .dep-tools__hero { flex-direction: column; }
+        .dep-tools__actions { align-self: flex-end; flex-wrap: wrap; margin-left: 0; }
+      }
+      @media (max-width: 700px) {
+        .dep-tools__form, .dep-tools__form--scan, .dep-tools__form--three, .dep-tools__grid { grid-template-columns: 1fr; }
+      }
     </style>
     <div class="dep-tools">
       <section class="dep-tools__hero">

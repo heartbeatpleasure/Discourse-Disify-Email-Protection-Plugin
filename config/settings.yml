@@ -1,0 +1,148 @@
+plugins:
+  disify_email_protection_enabled:
+    default: false
+    client: false
+
+  disify_email_protection_api_key:
+    default: ""
+    type: string
+    secret: true
+    client: false
+
+  disify_email_protection_api_auth_mode:
+    default: "x_api_key"
+    type: enum
+    choices:
+      - x_api_key
+      - bearer
+    client: false
+
+  disify_email_protection_mode:
+    default: "monitor"
+    type: enum
+    choices:
+      - monitor
+      - review
+      - enforce
+    client: false
+
+  disify_email_protection_fail_open:
+    default: true
+    client: false
+
+  disify_email_protection_timeout_ms:
+    default: 2000
+    type: integer
+    min: 500
+    max: 5000
+    client: false
+
+  disify_email_protection_block_disposable:
+    default: true
+    client: false
+
+  disify_email_protection_disposable_confidence_threshold:
+    default: 90
+    type: integer
+    min: 50
+    max: 100
+    client: false
+
+  disify_email_protection_block_no_mx:
+    default: true
+    client: false
+
+  disify_email_protection_role_email_action:
+    default: "monitor"
+    type: enum
+    choices:
+      - ignore
+      - monitor
+      - review
+      - block
+    client: false
+
+  disify_email_protection_typo_suggestions_enabled:
+    default: true
+    client: false
+
+  disify_email_protection_check_registration:
+    default: true
+    client: false
+
+  disify_email_protection_check_email_changes:
+    default: true
+    client: false
+
+  disify_email_protection_check_staged_users:
+    default: false
+    client: false
+
+  disify_email_protection_trusted_provider_email_check:
+    default: true
+    client: false
+
+  disify_email_protection_domain_cache_ttl_hours:
+    default: 24
+    type: integer
+    min: 1
+    max: 168
+    client: false
+
+  disify_email_protection_email_hmac_cache_ttl_minutes:
+    default: 15
+    type: integer
+    min: 1
+    max: 1440
+    client: false
+
+  disify_email_protection_event_retention_days:
+    default: 90
+    type: integer
+    min: 7
+    max: 3650
+    client: false
+
+  disify_email_protection_stats_retention_days:
+    default: 400
+    type: integer
+    min: 30
+    max: 3650
+    client: false
+
+  disify_email_protection_review_queue_enabled:
+    default: true
+    client: false
+
+  disify_email_protection_user_notes_enabled:
+    default: false
+    client: false
+
+  disify_email_protection_moderator_digest_enabled:
+    default: false
+    client: false
+
+  disify_email_protection_moderator_digest_group:
+    default: "staff"
+    type: string
+    client: false
+
+  disify_email_protection_manual_scan_enabled:
+    default: true
+    client: false
+
+  disify_email_protection_manual_scan_full_email_mode:
+    default: "domain_only"
+    type: enum
+    choices:
+      - domain_only
+      - trusted_providers
+      - all
+    client: false
+
+  disify_email_protection_max_scan_batch_size:
+    default: 50
+    type: integer
+    min: 10
+    max: 500
+    client: false

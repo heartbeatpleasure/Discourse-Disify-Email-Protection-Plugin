@@ -1,0 +1,47 @@
+en:
+  js:
+    admin:
+      disify_email_protection:
+        title: "Disposable Email Protection"
+        description: "Reduce disposable, unreachable, and abuse-oriented email registrations with DISIFY."
+        open_settings: "Open settings"
+        open_tool: "Open"
+        current_status: "Current status"
+        overview_title: "Email protection"
+        overview_description: "Configure policy, monitor service health, review risk decisions, and inspect aggregate activity."
+        category_configuration: "Configuration"
+        category_monitoring: "Monitoring"
+        category_moderation: "Moderation"
+        category_operations: "Operations"
+        settings_description: "Configure the API key, protection mode, thresholds, caching, privacy, notifications, and scan behavior."
+        health:
+          title: "Email Protection Health"
+          short_title: "Health"
+          description: "Check DISIFY availability, quota state, circuit breaker status, and privacy-safe operational details."
+          refresh: "Refresh"
+          test: "Run service test"
+          reset_circuit: "Reset circuit"
+          back: "Back to overview"
+        statistics:
+          title: "Email Protection Statistics"
+          short_title: "Statistics"
+          description: "Review aggregate checks, blocks, review items, API use, cache hits, and fail-open events."
+          back: "Back to overview"
+        review:
+          title: "Email Risk Review Queue"
+          short_title: "Review queue"
+          description: "Review actionable email-risk findings without storing raw email addresses in plugin records."
+          approve: "Approve for 7 days"
+          reject: "Reject"
+          recheck: "Recheck"
+          back: "Back to overview"
+        tools:
+          title: "Email Protection Tools"
+          short_title: "Tools"
+          description: "Run an admin-only manual check, manage policy exceptions, or start a controlled existing-user scan."
+          check: "Check email"
+          start_scan: "Start existing-user scan"
+          resume_scan: "Resume scan"
+          add_exception: "Add exception"
+          delete_exception: "Delete"
+          back: "Back to overview"

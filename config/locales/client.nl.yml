@@ -1,0 +1,47 @@
+nl:
+  js:
+    admin:
+      disify_email_protection:
+        title: "Disposable Email Protection"
+        description: "Beperk tijdelijke, onbereikbare en voor misbruik gebruikte e-mailregistraties met DISIFY."
+        open_settings: "Open instellingen"
+        open_tool: "Openen"
+        current_status: "Huidige status"
+        overview_title: "E-mailbeveiliging"
+        overview_description: "Configureer beleid, controleer servicegezondheid, beoordeel risicosignalen en bekijk geaggregeerde activiteit."
+        category_configuration: "Configuratie"
+        category_monitoring: "Monitoring"
+        category_moderation: "Moderatie"
+        category_operations: "Beheer"
+        settings_description: "Configureer API-key, modus, drempelwaarden, caching, privacy, notificaties en scans."
+        health:
+          title: "Email Protection Health"
+          short_title: "Health"
+          description: "Controleer DISIFY-bereikbaarheid, quota, circuit breaker en privacyveilige operationele informatie."
+          refresh: "Vernieuwen"
+          test: "Servicetest uitvoeren"
+          reset_circuit: "Circuit resetten"
+          back: "Terug naar overzicht"
+        statistics:
+          title: "Email Protection Statistics"
+          short_title: "Statistieken"
+          description: "Bekijk geaggregeerde controles, blokkades, reviews, API-gebruik, cachehits en fail-open gebeurtenissen."
+          back: "Terug naar overzicht"
+        review:
+          title: "Email Risk Review Queue"
+          short_title: "Review queue"
+          description: "Beoordeel e-mailrisico's zonder ruwe e-mailadressen in plugingegevens op te slaan."
+          approve: "7 dagen toestaan"
+          reject: "Afwijzen"
+          recheck: "Opnieuw controleren"
+          back: "Terug naar overzicht"
+        tools:
+          title: "Email Protection Tools"
+          short_title: "Tools"
+          description: "Voer een handmatige controle uit, beheer uitzonderingen of start een gecontroleerde scan van bestaande gebruikers."
+          check: "E-mail controleren"
+          start_scan: "Scan bestaande gebruikers"
+          resume_scan: "Scan hervatten"
+          add_exception: "Uitzondering toevoegen"
+          delete_exception: "Verwijderen"
+          back: "Terug naar overzicht"

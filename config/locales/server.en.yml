@@ -1,0 +1,42 @@
+en:
+  site_settings:
+    disify_email_protection_enabled: "Enable disposable email and deliverability protection using DISIFY."
+    disify_email_protection_api_key: "DISIFY API key. Leave blank to use anonymous API access. An authenticated free account is recommended for production."
+    disify_email_protection_api_auth_mode: "Authentication header used for the DISIFY API key."
+    disify_email_protection_mode: "Protection mode: monitor records risk without blocking, review requires staff review for actionable results, enforce blocks configured high-risk results."
+    disify_email_protection_fail_open: "Allow email actions to continue when DISIFY is unavailable or rate limited. Recommended to avoid a third-party outage blocking registration."
+    disify_email_protection_timeout_ms: "Maximum time in milliseconds allowed for a real-time DISIFY request."
+    disify_email_protection_block_disposable: "Treat high-confidence disposable email results as actionable risk."
+    disify_email_protection_disposable_confidence_threshold: "Minimum DISIFY confidence score required before disposable results are blocked/reviewed."
+    disify_email_protection_block_no_mx: "Treat domains without valid mail exchange records as unusable."
+    disify_email_protection_role_email_action: "Policy for role-based addresses such as info@ or support@."
+    disify_email_protection_typo_suggestions_enabled: "Keep typo suggestions in normalized results for admin diagnosis."
+    disify_email_protection_check_registration: "Check email addresses when a new local user is created."
+    disify_email_protection_check_email_changes: "Check primary and secondary email changes for existing users."
+    disify_email_protection_check_staged_users: "Check staged users created from incoming email. Disabled by default."
+    disify_email_protection_trusted_provider_email_check: "Always perform per-email checks on trusted mailbox providers so plus-alias abuse can be detected."
+    disify_email_protection_domain_cache_ttl_hours: "Hours to retain safe domain-level cache data."
+    disify_email_protection_email_hmac_cache_ttl_minutes: "Minutes to retain an exact-email HMAC cache entry for repeated validation attempts."
+    disify_email_protection_event_retention_days: "Days to retain normalized plugin events. Raw email addresses are not stored."
+    disify_email_protection_stats_retention_days: "Days to retain aggregate daily statistics."
+    disify_email_protection_review_queue_enabled: "Create admin review items when policy returns a review decision or an existing-user scan finds risk."
+    disify_email_protection_user_notes_enabled: "Add selected staff notes for existing-user risk events when Discourse User Notes is enabled."
+    disify_email_protection_moderator_digest_enabled: "Send a daily private-message summary when meaningful email-risk activity exists."
+    disify_email_protection_moderator_digest_group: "Group that receives the optional daily email-risk summary."
+    disify_email_protection_manual_scan_enabled: "Allow admins to launch a manual scan of existing users."
+    disify_email_protection_manual_scan_full_email_mode: "Data mode for manual existing-user scans."
+    disify_email_protection_max_scan_batch_size: "Maximum number of users processed by one existing-user scan job batch."
+
+  dashboard:
+    problem:
+      disify_email_protection_operational_health: "Disposable Email Protection is degraded (%{status}; %{reason}). <a href='%{base_path}/admin/plugins/disify-email-protection-health'>Open Email Protection Health</a>."
+
+  disify_email_protection:
+    errors:
+      disposable_email: "cannot be used for registration. Please use a regular email address that you can keep access to."
+      no_mx: "uses a domain that cannot receive email. Please check the address or use another email address."
+      invalid_format: "is not a valid email address."
+      role_email: "cannot be used under the current email policy. Please use a personal email address."
+      policy_block: "cannot be used under the current email policy."
+      service_unavailable: "could not be validated right now. Please try again later."
+      review_required: "requires staff review before it can be used. Please contact staff or try another email address."

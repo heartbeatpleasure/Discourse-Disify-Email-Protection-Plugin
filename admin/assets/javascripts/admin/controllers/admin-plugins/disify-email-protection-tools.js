@@ -173,6 +173,8 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
           ? i18n("admin.disify_email_protection.tools.scan_notice_trusted_providers")
           : i18n("admin.disify_email_protection.tools.scan_notice_all");
 
+    const requestId = this.createScanRequestId();
+
     this.dialog.confirm({
       title: i18n("admin.disify_email_protection.tools.start_scan_dialog_title"),
       message: i18n("admin.disify_email_protection.tools.start_scan_dialog_message", {
@@ -180,16 +182,28 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
         data_notice: dataNotice,
       }),
       confirmButtonLabel: i18n("admin.disify_email_protection.tools.start_scan_dialog_confirm"),
-      didConfirm: () => this.startScanNow(),
+      didConfirm: () => this.startScanNow(requestId),
     });
   }
 
-  async startScanNow() {
+  createScanRequestId() {
+    if (globalThis.crypto?.randomUUID) {
+      return globalThis.crypto.randomUUID();
+    }
+
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  async startScanNow(requestId) {
+    if (this.isScanning) {
+      return;
+    }
+
     this.isScanning = true;
     try {
       await ajax("/admin/plugins/disify-email-protection/tools/scan.json", {
         type: "POST",
-        data: { scan_mode: this.scanMode },
+        data: { scan_mode: this.scanMode, request_id: requestId },
       });
       await this.loadTools();
       this.toasts.success({ data: { message: i18n("admin.disify_email_protection.tools.start_scan_success") } });

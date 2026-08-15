@@ -52,7 +52,7 @@ export default RouteTemplate(
         margin-left: auto;
       }
       .dep-tools__actions .btn { white-space: nowrap; }
-      .dep-tools__form { display: grid; grid-template-columns: minmax(18rem, 1fr) auto; gap: .75rem; margin-top: .9rem; align-items: center; }
+      .dep-tools__form { display: grid; grid-template-columns: minmax(18rem, 1fr) auto; gap: .75rem; margin-top: .9rem; align-items: start; }
       .dep-tools__form--scan { grid-template-columns: minmax(24rem, 32rem) auto auto auto; justify-content: start; }
       .dep-tools__form--three { grid-template-columns: minmax(14rem, 1.1fr) minmax(24rem, 2fr) minmax(16rem, 1.2fr) auto; }
       .dep-tools__control,
@@ -78,12 +78,12 @@ export default RouteTemplate(
         min-height: 44px;
         margin: 0;
         align-items: center;
-        align-self: center;
+        align-self: start;
         justify-content: center;
         white-space: nowrap;
       }
       .dep-tools__form > .dep-tools__control,
-      .dep-tools__form > .dep-tools__button { align-self: center; }
+      .dep-tools__form > .dep-tools__button { align-self: start; }
       .dep-tools__result, .dep-tools__scan { margin-top: .8rem; padding: .8rem; border-radius: 12px; background: var(--dep-surface-alt); overflow-wrap: anywhere; }
       .dep-tools__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .7rem; margin-top: .85rem; }
       .dep-tools__item { min-width: 0; padding: .7rem; border-radius: 12px; background: var(--dep-surface-alt); }

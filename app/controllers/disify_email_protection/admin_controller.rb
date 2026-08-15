@@ -143,7 +143,14 @@ module ::DisifyEmailProtection
 
     def start_scan
       rate_limit_admin_action!("start-scan", 5)
-      render_json_dump(success: true, scan: ExistingUserScan.start!(actor: current_user, scan_mode: params[:scan_mode]))
+      render_json_dump(
+        success: true,
+        scan: ExistingUserScan.start!(
+          actor: current_user,
+          scan_mode: params[:scan_mode],
+          request_id: params[:request_id],
+        ),
+      )
     end
 
     def resume_scan

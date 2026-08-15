@@ -11,18 +11,28 @@ module ::DisifyEmailProtection
     ACTIVE_STATUSES = %w[running waiting].freeze
     BLOCKING_STATUSES = %w[running waiting paused].freeze
 
-    def start!(actor:, scan_mode: nil)
+    def start!(actor:, scan_mode: nil, request_id: nil)
       raise Discourse::InvalidAccess unless actor&.admin?
       raise Discourse::InvalidParameters.new(:scan) unless SiteSetting.disify_email_protection_manual_scan_enabled
 
       mode = scan_mode.to_s.presence || SiteSetting.disify_email_protection_manual_scan_full_email_mode.to_s
       raise Discourse::InvalidParameters.new(:scan_mode) unless %w[domain_only trusted_providers all].include?(mode)
+      request_id = normalize_request_id(request_id)
 
+      should_enqueue = false
       payload = with_state_lock do
         current = normalize_stale_without_lock!(raw_state)
+
+        # A single confirmation can occasionally be submitted twice by the client/browser.
+        # Treat an identical request id as the same start operation instead of failing the
+        # second request after the first one has already moved the scan to `running`.
+        next current if request_id.present? && current["start_request_id"] == request_id
+
         if BLOCKING_STATUSES.include?(current["status"])
           raise Discourse::InvalidParameters.new(:scan_already_running)
         end
+
+        should_enqueue = true
 
         now = Time.zone.now
         scan_id = SecureRandom.hex(8)
@@ -32,6 +42,7 @@ module ::DisifyEmailProtection
           "mode" => mode,
           "started_at" => now.iso8601,
           "started_by_id" => actor.id,
+          "start_request_id" => request_id,
           "last_activity_at" => now.iso8601,
           "next_run_at" => nil,
           "cursor" => 0,
@@ -44,7 +55,7 @@ module ::DisifyEmailProtection
         new_state
       end
 
-      Jobs.enqueue(:disify_existing_user_scan, scan_id: payload["scan_id"])
+      Jobs.enqueue(:disify_existing_user_scan, scan_id: payload["scan_id"]) if should_enqueue
       payload
     end
 
@@ -294,6 +305,10 @@ module ::DisifyEmailProtection
 
       last_activity_at = parse_time(current["last_activity_at"] || current["started_at"])
       last_activity_at.present? && last_activity_at < now - STALE_AFTER
+    end
+
+    def normalize_request_id(value)
+      value.to_s.strip.first(128).presence
     end
 
     def parse_time(value)

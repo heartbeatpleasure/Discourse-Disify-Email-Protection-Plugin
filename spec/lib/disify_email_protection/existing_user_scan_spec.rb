@@ -62,4 +62,23 @@ RSpec.describe DisifyEmailProtection::ExistingUserScan do
     expect(state["cancelled_by_id"]).to eq(admin.id)
     expect(described_class.still_active?("active-scan")).to eq(false)
   end
+  it "treats duplicate start requests with the same request id as one scan" do
+    allow(Jobs).to receive(:enqueue)
+
+    first = described_class.start!(
+      actor: admin,
+      scan_mode: "domain_only",
+      request_id: "same-confirmation",
+    )
+    second = described_class.start!(
+      actor: admin,
+      scan_mode: "domain_only",
+      request_id: "same-confirmation",
+    )
+
+    expect(second["scan_id"]).to eq(first["scan_id"])
+    expect(second["start_request_id"]).to eq("same-confirmation")
+    expect(Jobs).to have_received(:enqueue).once
+  end
+
 end

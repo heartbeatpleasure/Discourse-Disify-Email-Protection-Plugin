@@ -55,4 +55,25 @@ RSpec.describe DisifyEmailProtection::AdminController do
     end
   end
 
+  describe "POST /admin/plugins/disify-email-protection/tools/scan.json" do
+    after do
+      PluginStore.remove(DisifyEmailProtection::STORE_NAMESPACE, DisifyEmailProtection::ExistingUserScan::STATE_KEY)
+    end
+
+    it "treats a repeated start request id as the same scan" do
+      allow(Jobs).to receive(:enqueue)
+      sign_in(admin)
+
+      params = { scan_mode: "domain_only", request_id: "request-spec-idempotency" }
+      post "/admin/plugins/disify-email-protection/tools/scan.json", params: params
+      expect(response.status).to eq(200)
+      first_scan_id = response.parsed_body.dig("scan", "scan_id")
+
+      post "/admin/plugins/disify-email-protection/tools/scan.json", params: params
+      expect(response.status).to eq(200)
+      expect(response.parsed_body.dig("scan", "scan_id")).to eq(first_scan_id)
+      expect(Jobs).to have_received(:enqueue).once
+    end
+  end
+
 end

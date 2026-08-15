@@ -12,6 +12,8 @@ export default apiInitializer("0.11.1", (api) => {
   const PLUGIN_DISPLAY_NAME = "Discourse-Disify-Email-Protection-Plugin";
   const FIXED_SETTINGS_URL =
     "/admin/site_settings/category/all_results?filter=disify_email_protection";
+  const SETTINGS_BUTTON_SELECTOR =
+    `[data-plugin-setting-button="${PLUGIN_DISPLAY_NAME}"]`;
 
   let observer = null;
   let clickHandlerInstalled = false;
@@ -68,8 +70,27 @@ export default apiInitializer("0.11.1", (api) => {
     }
   }
 
+  function rewriteExactSettingsButtons() {
+    const buttons = Array.from(
+      document.querySelectorAll(SETTINGS_BUTTON_SELECTOR)
+    );
+
+    for (const button of buttons) {
+      if (button.dataset.disifyEmailProtectionSettingsFixed === "1") {
+        continue;
+      }
+
+      button.setAttribute("href", FIXED_SETTINGS_URL);
+      button.dataset.disifyEmailProtectionSettingsFixed = "1";
+    }
+  }
+
   function rewriteAll() {
     schedule("afterRender", () => {
+      // Current Discourse exposes a dedicated data attribute on each plugin's
+      // Settings button. Prefer that exact selector and retain the card-based
+      // rewrite only as a compatibility fallback for older admin UIs.
+      rewriteExactSettingsButtons();
       findPluginCards().forEach((card) => rewriteSettingsLinkInCard(card));
     });
   }
@@ -89,6 +110,17 @@ export default apiInitializer("0.11.1", (api) => {
 
         const target = event.target;
         if (!target) {
+          return;
+        }
+
+        // Current Discourse renders an exact plugin identifier on the Settings
+        // control. Intercept it before Ember's LinkTo transition can use the
+        // generated plugin:<name> filter.
+        const exactControl = target.closest?.(SETTINGS_BUTTON_SELECTOR);
+        if (exactControl) {
+          event.preventDefault();
+          event.stopPropagation();
+          window.location.assign(FIXED_SETTINGS_URL);
           return;
         }
 

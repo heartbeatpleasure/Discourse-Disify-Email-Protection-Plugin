@@ -7,6 +7,10 @@ import { popupAjaxError } from "discourse/lib/ajax-error";
 import { formatDisifyDate } from "../../lib/disify-date";
 import { i18n } from "discourse-i18n";
 
+const SCAN_POLL_INTERVAL_MS = 3000;
+const MAX_CONSECUTIVE_SCAN_POLL_FAILURES = 3;
+const POLLED_SCAN_STATUSES = new Set(["running", "waiting"]);
+
 export default class AdminPluginsDisifyEmailProtectionToolsController extends Controller {
   @service dialog;
   @service toasts;
@@ -24,8 +28,19 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
   @tracked exceptionReason = "";
   @tracked isSavingException = false;
 
+  scanPollTimer = null;
+  scanPollRequestInFlight = false;
+  scanPollFailureCount = 0;
+  scanPollingRouteActive = false;
+  scanPollingSuspended = false;
+  scanPollingGeneration = 0;
+
   get currentScanStatus() {
     return this.data?.scan?.status || "idle";
+  }
+
+  get shouldPollScan() {
+    return POLLED_SCAN_STATUSES.has(this.currentScanStatus);
   }
 
   get showResumeScan() {
@@ -95,6 +110,7 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
   }
 
   resetState() {
+    this.deactivateScanPolling();
     this.data = undefined;
     this.isLoading = false;
     this.email = "";
@@ -107,10 +123,123 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
     this.exceptionValue = "";
     this.exceptionReason = "";
     this.isSavingException = false;
+    this.scanPollFailureCount = 0;
+    this.scanPollingSuspended = false;
+  }
+
+  activateScanPolling() {
+    this.scanPollingRouteActive = true;
+    this.scanPollingSuspended = false;
+    this.scanPollingGeneration += 1;
+    this.syncScanPolling();
+  }
+
+  deactivateScanPolling() {
+    this.scanPollingRouteActive = false;
+    this.scanPollingSuspended = false;
+    this.scanPollingGeneration += 1;
+    this.clearScanPollTimer();
+  }
+
+  invalidateScanPolling() {
+    this.scanPollingGeneration += 1;
+    this.clearScanPollTimer();
+  }
+
+  clearScanPollTimer() {
+    if (this.scanPollTimer !== null) {
+      globalThis.clearTimeout(this.scanPollTimer);
+      this.scanPollTimer = null;
+    }
+  }
+
+  syncScanPolling() {
+    if (
+      !this.scanPollingRouteActive ||
+      this.scanPollingSuspended ||
+      !this.shouldPollScan
+    ) {
+      this.clearScanPollTimer();
+      return;
+    }
+
+    if (this.scanPollTimer !== null) {
+      return;
+    }
+
+    this.scanPollTimer = globalThis.setTimeout(() => {
+      this.scanPollTimer = null;
+      void this.pollScanStatus();
+    }, SCAN_POLL_INTERVAL_MS);
+  }
+
+  async pollScanStatus() {
+    if (
+      !this.scanPollingRouteActive ||
+      this.scanPollingSuspended ||
+      !this.shouldPollScan
+    ) {
+      this.syncScanPolling();
+      return;
+    }
+
+    if (this.scanPollRequestInFlight) {
+      this.syncScanPolling();
+      return;
+    }
+
+    const generation = this.scanPollingGeneration;
+    this.scanPollRequestInFlight = true;
+
+    try {
+      const data = await ajax(
+        "/admin/plugins/disify-email-protection/tools/scan/status.json"
+      );
+
+      if (
+        !this.scanPollingRouteActive ||
+        generation !== this.scanPollingGeneration
+      ) {
+        return;
+      }
+
+      this.scanPollFailureCount = 0;
+      this.scanPollingSuspended = false;
+      this.data = {
+        ...this.data,
+        scan: data.scan,
+        quota: data.quota,
+      };
+    } catch (error) {
+      if (
+        this.scanPollingRouteActive &&
+        generation === this.scanPollingGeneration
+      ) {
+        this.scanPollFailureCount += 1;
+
+        if (
+          this.scanPollFailureCount >= MAX_CONSECUTIVE_SCAN_POLL_FAILURES
+        ) {
+          this.scanPollingSuspended = true;
+          this.clearScanPollTimer();
+          popupAjaxError(error);
+        }
+      }
+    } finally {
+      this.scanPollRequestInFlight = false;
+
+      if (
+        this.scanPollingRouteActive &&
+        generation === this.scanPollingGeneration
+      ) {
+        this.syncScanPolling();
+      }
+    }
   }
 
   @action
   async loadTools() {
+    this.invalidateScanPolling();
     this.isLoading = true;
     try {
       const data = await ajax("/admin/plugins/disify-email-protection/tools.json");
@@ -122,10 +251,13 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
         })),
       };
       this.scanMode = this.data?.scan_estimate?.configured_mode || "domain_only";
+      this.scanPollFailureCount = 0;
+      this.scanPollingSuspended = false;
     } catch (error) {
       popupAjaxError(error);
     } finally {
       this.isLoading = false;
+      this.syncScanPolling();
     }
   }
 
@@ -199,6 +331,7 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
       return;
     }
 
+    this.invalidateScanPolling();
     this.isScanning = true;
     try {
       await ajax("/admin/plugins/disify-email-protection/tools/scan.json", {
@@ -211,11 +344,13 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
       popupAjaxError(error);
     } finally {
       this.isScanning = false;
+      this.syncScanPolling();
     }
   }
 
   @action
   async resumeScan() {
+    this.invalidateScanPolling();
     this.isScanning = true;
     try {
       await ajax(
@@ -228,6 +363,7 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
       popupAjaxError(error);
     } finally {
       this.isScanning = false;
+      this.syncScanPolling();
     }
   }
 
@@ -247,6 +383,7 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
   }
 
   async cancelScanNow() {
+    this.invalidateScanPolling();
     this.isCancellingScan = true;
     try {
       await ajax(
@@ -263,6 +400,7 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
       popupAjaxError(error);
     } finally {
       this.isCancellingScan = false;
+      this.syncScanPolling();
     }
   }
 

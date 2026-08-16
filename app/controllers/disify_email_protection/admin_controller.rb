@@ -116,6 +116,17 @@ module ::DisifyEmailProtection
       )
     end
 
+    def scan_status
+      render_json_dump(
+        scan: ExistingUserScan.state,
+        quota: Health.stored_health.slice(
+          "rate_limit_limit",
+          "rate_limit_remaining",
+          "reset_at",
+        ),
+      )
+    end
+
     def manual_check
       rate_limit_admin_action!("manual-check", 20)
       email = params.require(:email).to_s.strip

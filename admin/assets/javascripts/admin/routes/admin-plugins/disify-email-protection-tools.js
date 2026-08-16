@@ -9,6 +9,13 @@ export default class AdminPluginsDisifyEmailProtectionToolsRoute extends Discour
   setupController(controller) {
     super.setupController(...arguments);
     controller.resetState?.();
+    controller.activateScanPolling?.();
     controller.loadTools?.();
+  }
+
+  resetController(controller, isExiting) {
+    if (isExiting) {
+      controller.deactivateScanPolling?.();
+    }
   }
 }

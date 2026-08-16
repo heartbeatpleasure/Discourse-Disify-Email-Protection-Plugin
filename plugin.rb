@@ -167,6 +167,10 @@ after_initialize do
            "disify_email_protection/admin#manual_check",
          defaults: { format: :json },
          constraints: AdminConstraint.new
+    get "/admin/plugins/disify-email-protection/tools/scan/status" =>
+          "disify_email_protection/admin#scan_status",
+        defaults: { format: :json },
+        constraints: AdminConstraint.new
     post "/admin/plugins/disify-email-protection/tools/scan" =>
            "disify_email_protection/admin#start_scan",
          defaults: { format: :json },

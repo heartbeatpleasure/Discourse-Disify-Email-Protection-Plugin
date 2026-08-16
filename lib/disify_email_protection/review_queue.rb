@@ -28,36 +28,68 @@ module ::DisifyEmailProtection
     end
 
     def approve!(item, actor)
-      raise Discourse::InvalidParameters.new(:review) unless item.state == "pending"
-      raise Discourse::InvalidParameters.new(:email_hmac) if item.email_hmac.blank?
-
-      PolicyExceptions.create!(
-        kind: "allow_email_hmac",
-        value: item.email_hmac,
-        actor: actor,
-        reason: "Approved from email risk review ##{item.id}",
+      approve_with_policy!(
+        item,
+        actor,
         expires_at: 7.days.from_now,
+        resolution: "allow_7_days",
+        reason: "Approved for 7 days from email risk review ##{item.id}",
       )
-      resolve!(item, "approved", actor)
+    end
+
+    def approve_permanently!(item, actor)
+      approve_with_policy!(
+        item,
+        actor,
+        expires_at: nil,
+        resolution: "allow_permanent",
+        reason: "Permanently approved from email risk review ##{item.id}",
+      )
     end
 
     def reject!(item, actor)
-      raise Discourse::InvalidParameters.new(:review) unless item.state == "pending"
+      item.with_lock do
+        raise Discourse::InvalidParameters.new(:review) unless item.state == "pending"
 
-      if item.email_hmac.present?
-        PolicyExceptions.create!(
-          kind: "block_email_hmac",
-          value: item.email_hmac,
-          actor: actor,
-          reason: "Rejected from email risk review ##{item.id}",
-          expires_at: 30.days.from_now,
-        )
+        if item.email_hmac.present?
+          PolicyExceptions.create!(
+            kind: "block_email_hmac",
+            value: item.email_hmac,
+            actor: actor,
+            reason: "Rejected from email risk review ##{item.id}",
+            expires_at: 30.days.from_now,
+          )
+        end
+        resolve!(item, "rejected", actor, resolution: "block_30_days")
       end
-      resolve!(item, "rejected", actor)
     end
 
-    def resolve!(item, state, actor)
-      item.update!(state: state, resolved_by_id: actor.id, resolved_at: Time.zone.now)
+    def approve_with_policy!(item, actor, expires_at:, resolution:, reason:)
+      item.with_lock do
+        raise Discourse::InvalidParameters.new(:review) unless item.state == "pending"
+        raise Discourse::InvalidParameters.new(:email_hmac) if item.email_hmac.blank?
+
+        PolicyExceptions.create!(
+          kind: "allow_email_hmac",
+          value: item.email_hmac,
+          actor: actor,
+          reason: reason,
+          expires_at: expires_at,
+        )
+        resolve!(item, "approved", actor, resolution: resolution)
+      end
+    end
+
+    def resolve!(item, state, actor, resolution: nil)
+      metadata = item.metadata.to_h.deep_stringify_keys
+      metadata["resolution"] = resolution if resolution.present?
+
+      item.update!(
+        state: state,
+        resolved_by_id: actor.id,
+        resolved_at: Time.zone.now,
+        metadata: metadata,
+      )
       item
     end
   end

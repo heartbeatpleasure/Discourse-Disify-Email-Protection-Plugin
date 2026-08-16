@@ -53,7 +53,7 @@ export default RouteTemplate(
       }
       .dep-tools__actions .btn { white-space: nowrap; }
       .dep-tools__form { display: grid; grid-template-columns: minmax(18rem, 1fr) auto; gap: .75rem; margin-top: .9rem; align-items: start; }
-      .dep-tools__form--scan { grid-template-columns: minmax(24rem, 32rem) auto auto auto; justify-content: start; }
+      .dep-tools__form--scan { grid-template-columns: minmax(24rem, 32rem) minmax(0, 1fr); justify-content: stretch; }
       .dep-tools__form--three { grid-template-columns: minmax(14rem, 1.1fr) minmax(24rem, 2fr) minmax(16rem, 1.2fr) auto; }
       .dep-tools__control,
       .dep-tools__button,
@@ -85,18 +85,51 @@ export default RouteTemplate(
       .dep-tools__form > .dep-tools__control,
       .dep-tools__form > .dep-tools__button { align-self: start; }
       .dep-tools__result, .dep-tools__scan { margin-top: .8rem; padding: .8rem; border-radius: 12px; background: var(--dep-surface-alt); overflow-wrap: anywhere; }
-      .dep-tools__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .7rem; margin-top: .85rem; }
+      .dep-tools__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: .7rem; margin-top: .85rem; }
       .dep-tools__item { min-width: 0; padding: .7rem; border-radius: 12px; background: var(--dep-surface-alt); }
       .dep-tools__label { color: var(--dep-muted); font-size: var(--font-down-1); font-weight: 700; }
       .dep-tools__value { margin-top: .2rem; font-weight: 600; overflow-wrap: anywhere; }
-      .dep-tools__exceptions { margin-top: .8rem; width: 100%; border-collapse: collapse; }
-      .dep-tools__exceptions th, .dep-tools__exceptions td { padding: .5rem .6rem; border-bottom: 1px solid var(--dep-border); text-align: left; vertical-align: top; }
-      .dep-tools__status-note { margin-top: .8rem; }
+      .dep-tools__scan-actions {
+        display: flex;
+        min-width: 0;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: flex-end;
+        gap: .75rem;
+      }
+      .dep-tools__status-note { margin-top: .95rem; }
+      .dep-tools__exception-list {
+        display: grid;
+        gap: .7rem;
+        margin-top: .85rem;
+      }
+      .dep-tools__exception-card {
+        display: grid;
+        grid-template-columns: minmax(11rem, 1.1fr) minmax(13rem, 1.3fr) minmax(12rem, 1fr) auto;
+        gap: .7rem;
+        align-items: end;
+        min-width: 0;
+        padding: .8rem;
+        border: 1px solid var(--dep-border);
+        border-radius: 12px;
+        background: var(--dep-surface-alt);
+      }
+      .dep-tools__exception-field { min-width: 0; }
+      .dep-tools__exception-meta {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: .45rem .7rem;
+      }
+      .dep-tools__exception-card a { color: var(--tertiary); }
+      .dep-tools__exception-card .btn { white-space: nowrap; }
       @media (max-width: 1100px) {
         .dep-tools__form--three { grid-template-columns: minmax(13rem, 1fr) minmax(20rem, 1.7fr); }
+        .dep-tools__exception-card { grid-template-columns: 1fr 1fr; align-items: start; }
       }
       @media (max-width: 980px) {
-        .dep-tools__form--scan, .dep-tools__form--three { grid-template-columns: 1fr 1fr; }
+        .dep-tools__form--scan { grid-template-columns: 1fr; }
+        .dep-tools__form--three { grid-template-columns: 1fr 1fr; }
+        .dep-tools__scan-actions { justify-content: flex-start; }
         .dep-tools__grid { grid-template-columns: 1fr 1fr; }
       }
       @media (max-width: 900px) {
@@ -104,7 +137,9 @@ export default RouteTemplate(
         .dep-tools__actions { align-self: flex-end; flex-wrap: wrap; margin-left: 0; }
       }
       @media (max-width: 700px) {
-        .dep-tools__form, .dep-tools__form--scan, .dep-tools__form--three, .dep-tools__grid { grid-template-columns: 1fr; }
+        .dep-tools__form, .dep-tools__form--scan, .dep-tools__form--three, .dep-tools__grid, .dep-tools__exception-card, .dep-tools__exception-meta { grid-template-columns: 1fr; }
+        .dep-tools__scan-actions { align-items: stretch; }
+        .dep-tools__scan-actions .btn { flex: 1 1 auto; }
       }
     </style>
     <div class="dep-tools">
@@ -149,7 +184,6 @@ export default RouteTemplate(
             <div class="dep-tools__item"><div class="dep-tools__label">{{i18n "admin.disify_email_protection.tools.scan_status"}}</div><div class="dep-tools__value">{{@controller.scanStatusLabel}}</div></div>
             <div class="dep-tools__item"><div class="dep-tools__label">{{i18n "admin.disify_email_protection.tools.scan_processed"}}</div><div class="dep-tools__value">{{@controller.data.scan.processed}} / {{@controller.data.scan.total}}</div></div>
             <div class="dep-tools__item"><div class="dep-tools__label">{{i18n "admin.disify_email_protection.tools.scan_flagged"}}</div><div class="dep-tools__value">{{@controller.data.scan.flagged}}</div></div>
-            <div class="dep-tools__item"><div class="dep-tools__label">{{i18n "admin.disify_email_protection.tools.scan_api_remaining"}}</div><div class="dep-tools__value">{{@controller.data.quota.rate_limit_remaining}}</div></div>
             <div class="dep-tools__item"><div class="dep-tools__label">{{i18n "admin.disify_email_protection.tools.scan_last_error"}}</div><div class="dep-tools__value">{{@controller.scanLastErrorLabel}}</div></div>
           </div>
           <div class="dep-tools__form dep-tools__form--scan">
@@ -158,13 +192,15 @@ export default RouteTemplate(
               <option value="trusted_providers">{{i18n "admin.disify_email_protection.tools.scan_mode_trusted_providers"}}</option>
               <option value="all">{{i18n "admin.disify_email_protection.tools.scan_mode_all"}}</option>
             </select>
-            <button class="btn btn-primary dep-tools__button" type="button" {{on "click" @controller.startScan}} disabled={{@controller.startScanDisabled}}>{{i18n "admin.disify_email_protection.tools.start_scan"}}</button>
-            {{#if @controller.showResumeScan}}
-              <button class="btn dep-tools__button" type="button" {{on "click" @controller.resumeScan}} disabled={{@controller.isScanning}}>{{i18n "admin.disify_email_protection.tools.resume_scan"}}</button>
-            {{/if}}
-            {{#if @controller.showCancelScan}}
-              <button class="btn btn-danger dep-tools__button" type="button" {{on "click" @controller.cancelScan}} disabled={{@controller.isCancellingScan}}>{{i18n "admin.disify_email_protection.tools.cancel_scan"}}</button>
-            {{/if}}
+            <div class="dep-tools__scan-actions">
+              <button class="btn btn-primary dep-tools__button" type="button" {{on "click" @controller.startScan}} disabled={{@controller.startScanDisabled}}>{{i18n "admin.disify_email_protection.tools.start_scan"}}</button>
+              {{#if @controller.showResumeScan}}
+                <button class="btn dep-tools__button" type="button" {{on "click" @controller.resumeScan}} disabled={{@controller.isScanning}}>{{i18n "admin.disify_email_protection.tools.resume_scan"}}</button>
+              {{/if}}
+              {{#if @controller.showCancelScan}}
+                <button class="btn btn-danger dep-tools__button" type="button" {{on "click" @controller.cancelScan}} disabled={{@controller.isCancellingScan}}>{{i18n "admin.disify_email_protection.tools.cancel_scan"}}</button>
+              {{/if}}
+            </div>
           </div>
           {{#if @controller.scanStatusMessage}}
             <p class="dep-tools__muted dep-tools__status-note">{{@controller.scanStatusMessage}}</p>
@@ -187,18 +223,46 @@ export default RouteTemplate(
           <button class="btn btn-primary dep-tools__button" type="button" {{on "click" @controller.addException}} disabled={{@controller.isSavingException}}>{{i18n "admin.disify_email_protection.tools.add_exception"}}</button>
         </div>
         {{#if @controller.data.exceptions.length}}
-          <div style="overflow-x: auto;">
-            <table class="dep-tools__exceptions">
-              <thead><tr><th>{{i18n "admin.disify_email_protection.tools.exceptions_table_type"}}</th><th>{{i18n "admin.disify_email_protection.tools.exceptions_table_value"}}</th><th>{{i18n "admin.disify_email_protection.tools.exceptions_table_reason"}}</th><th>{{i18n "admin.disify_email_protection.tools.exceptions_table_expires"}}</th><th></th></tr></thead>
-              <tbody>
-                {{#each @controller.data.exceptions as |item|}}
-                  <tr>
-                    <td>{{item.kind}}</td><td>{{item.value}}</td><td>{{item.reason}}</td><td>{{item.expires_at_display}}</td>
-                    <td><button class="btn btn-small btn-danger" type="button" {{on "click" (fn @controller.deleteException item)}}>{{i18n "admin.disify_email_protection.tools.delete_exception"}}</button></td>
-                  </tr>
-                {{/each}}
-              </tbody>
-            </table>
+          <div class="dep-tools__exception-list">
+            {{#each @controller.data.exceptions as |item|}}
+              <article class="dep-tools__exception-card">
+                <div class="dep-tools__exception-field">
+                  <div class="dep-tools__label">{{i18n "admin.disify_email_protection.tools.exceptions_table_type"}}</div>
+                  <div class="dep-tools__value">{{item.kind_label}}</div>
+                </div>
+                <div class="dep-tools__exception-field">
+                  <div class="dep-tools__label">{{i18n "admin.disify_email_protection.tools.exceptions_table_value"}}</div>
+                  <div class="dep-tools__value">{{item.value}}</div>
+                </div>
+                <div class="dep-tools__exception-meta">
+                  <div class="dep-tools__exception-field">
+                    <div class="dep-tools__label">{{i18n "admin.disify_email_protection.tools.exceptions_table_expires"}}</div>
+                    <div class="dep-tools__value">{{item.expires_at_display}}</div>
+                  </div>
+                  <div class="dep-tools__exception-field">
+                    <div class="dep-tools__label">{{i18n "admin.disify_email_protection.tools.exception_created_by"}}</div>
+                    <div class="dep-tools__value">
+                      {{#if item.created_by}}
+                        <a href={{item.created_by_url}}>{{item.created_by.username}}</a>
+                      {{else}}
+                        —
+                      {{/if}}
+                    </div>
+                  </div>
+                  <div class="dep-tools__exception-field">
+                    <div class="dep-tools__label">{{i18n "admin.disify_email_protection.tools.exception_created_at"}}</div>
+                    <div class="dep-tools__value">{{item.created_at_display}}</div>
+                  </div>
+                </div>
+                <div class="dep-tools__exception-field">
+                  <div class="dep-tools__label">{{i18n "admin.disify_email_protection.tools.exceptions_table_reason"}}</div>
+                  <div class="dep-tools__value">{{#if item.reason}}{{item.reason}}{{else}}—{{/if}}</div>
+                  <div style="margin-top:.65rem;">
+                    <button class="btn btn-small btn-danger" type="button" {{on "click" (fn @controller.deleteException item)}}>{{i18n "admin.disify_email_protection.tools.delete_exception"}}</button>
+                  </div>
+                </div>
+              </article>
+            {{/each}}
           </div>
         {{/if}}
       </section>

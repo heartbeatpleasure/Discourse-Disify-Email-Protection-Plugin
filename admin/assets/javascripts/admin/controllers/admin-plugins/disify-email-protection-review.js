@@ -57,7 +57,20 @@ function flowLabel(flow) {
     : humanizeToken(flow);
 }
 
+function resolutionLabel(resolution) {
+  const key = {
+    allow_7_days: "resolution_allow_7_days",
+    allow_permanent: "resolution_allow_permanent",
+    block_30_days: "resolution_block_30_days",
+  }[resolution];
+
+  return key
+    ? i18n(`admin.disify_email_protection.review.${key}`)
+    : null;
+}
+
 export default class AdminPluginsDisifyEmailProtectionReviewController extends Controller {
+  @service dialog;
   @service toasts;
 
   @tracked data;
@@ -116,6 +129,7 @@ export default class AdminPluginsDisifyEmailProtectionReviewController extends C
           state_label: stateLabel(item.state),
           reason_label: reasonLabel(item.reason),
           flow_label: flowLabel(item.flow),
+          resolution_label: resolutionLabel(item.resolution),
           confidence_display:
             item.confidence === null || item.confidence === undefined
               ? "—"
@@ -128,6 +142,9 @@ export default class AdminPluginsDisifyEmailProtectionReviewController extends C
           ),
           user_url: item.user?.username
             ? getURL(`/u/${encodeURIComponent(item.user.username)}`)
+            : null,
+          resolved_by_url: item.resolved_by?.username
+            ? getURL(`/u/${encodeURIComponent(item.resolved_by.username)}`)
             : null,
         })),
       };
@@ -172,6 +189,30 @@ export default class AdminPluginsDisifyEmailProtectionReviewController extends C
       "approve",
       "admin.disify_email_protection.review.approve_success"
     );
+  }
+
+  @action
+  approvePermanently(item) {
+    if (this.workingId) {
+      return;
+    }
+
+    this.dialog.confirm({
+      title: i18n(
+        "admin.disify_email_protection.review.approve_permanent_dialog_title"
+      ),
+      message: i18n(
+        "admin.disify_email_protection.review.approve_permanent_dialog_message"
+      ),
+      confirmButtonLabel:
+        "admin.disify_email_protection.review.approve_permanent_dialog_confirm",
+      didConfirm: () =>
+        this.perform(
+          item,
+          "approve-permanent",
+          "admin.disify_email_protection.review.approve_permanent_success"
+        ),
+    });
   }
 
   @action

@@ -249,10 +249,28 @@ export default RouteTemplate(
           <div class="dep-page__grid">
             <div class="dep-page__item"><div class="dep-page__label">{{i18n "admin.disify_email_protection.health.label_overall"}}</div><div class="dep-page__value">{{@controller.data.overall}}</div></div>
             <div class="dep-page__item"><div class="dep-page__label">{{i18n "admin.disify_email_protection.health.label_enabled"}}</div><div class="dep-page__value">{{@controller.data.configuration.enabled}}</div></div>
-            <div class="dep-page__item"><div class="dep-page__label">{{i18n "admin.disify_email_protection.health.label_mode"}}</div><div class="dep-page__value">{{@controller.data.configuration.mode}}</div></div>
+            <div class="dep-page__item">
+              <div class="dep-page__label-row">
+                <div class="dep-page__label">{{i18n "admin.disify_email_protection.health.label_mode"}}</div>
+                <button class="dep-page__info" type="button" aria-label={{i18n "admin.disify_email_protection.health.info_mode"}} aria-expanded={{eq @controller.activeInfoKey "mode"}} aria-controls="dep-health-info-overlay" {{on "click" (fn @controller.toggleInfo "mode")}} {{on "keydown" (fn @controller.handleInfoTriggerKeydown "mode")}}>i</button>
+              </div>
+              <div class="dep-page__value">{{@controller.data.configuration.mode}}</div>
+            </div>
             <div class="dep-page__item"><div class="dep-page__label">{{i18n "admin.disify_email_protection.health.label_api_key_configured"}}</div><div class="dep-page__value">{{@controller.data.configuration.api_key_configured}}</div></div>
-            <div class="dep-page__item"><div class="dep-page__label">{{i18n "admin.disify_email_protection.health.label_auth_mode"}}</div><div class="dep-page__value">{{@controller.data.configuration.auth_mode}}</div></div>
-            <div class="dep-page__item"><div class="dep-page__label">{{i18n "admin.disify_email_protection.health.label_fail_open"}}</div><div class="dep-page__value">{{@controller.data.configuration.fail_open}}</div></div>
+            <div class="dep-page__item">
+              <div class="dep-page__label-row">
+                <div class="dep-page__label">{{i18n "admin.disify_email_protection.health.label_auth_mode"}}</div>
+                <button class="dep-page__info" type="button" aria-label={{i18n "admin.disify_email_protection.health.info_auth_mode"}} aria-expanded={{eq @controller.activeInfoKey "auth_mode"}} aria-controls="dep-health-info-overlay" {{on "click" (fn @controller.toggleInfo "auth_mode")}} {{on "keydown" (fn @controller.handleInfoTriggerKeydown "auth_mode")}}>i</button>
+              </div>
+              <div class="dep-page__value">{{@controller.data.configuration.auth_mode}}</div>
+            </div>
+            <div class="dep-page__item">
+              <div class="dep-page__label-row">
+                <div class="dep-page__label">{{i18n "admin.disify_email_protection.health.label_fail_open"}}</div>
+                <button class="dep-page__info" type="button" aria-label={{i18n "admin.disify_email_protection.health.info_fail_open"}} aria-expanded={{eq @controller.activeInfoKey "fail_open"}} aria-controls="dep-health-info-overlay" {{on "click" (fn @controller.toggleInfo "fail_open")}} {{on "keydown" (fn @controller.handleInfoTriggerKeydown "fail_open")}}>i</button>
+              </div>
+              <div class="dep-page__value">{{@controller.data.configuration.fail_open}}</div>
+            </div>
           </div>
         </section>
 
@@ -291,20 +309,6 @@ export default RouteTemplate(
                 <button class="dep-page__info" type="button" aria-label={{i18n "admin.disify_email_protection.health.info_rate_limit"}} aria-expanded={{eq @controller.activeInfoKey "rate_limit"}} aria-controls="dep-health-info-overlay" {{on "click" (fn @controller.toggleInfo "rate_limit")}} {{on "keydown" (fn @controller.handleInfoTriggerKeydown "rate_limit")}}>i</button>
               </div>
               <div class="dep-page__value">{{@controller.data.provider.rate_limit_limit_display}}</div>
-            </div>
-            <div class="dep-page__item">
-              <div class="dep-page__label-row">
-                <div class="dep-page__label">{{i18n "admin.disify_email_protection.health.label_remaining"}}</div>
-                <button class="dep-page__info" type="button" aria-label={{i18n "admin.disify_email_protection.health.info_remaining"}} aria-expanded={{eq @controller.activeInfoKey "remaining"}} aria-controls="dep-health-info-overlay" {{on "click" (fn @controller.toggleInfo "remaining")}} {{on "keydown" (fn @controller.handleInfoTriggerKeydown "remaining")}}>i</button>
-              </div>
-              <div class="dep-page__value">{{@controller.data.provider.rate_limit_remaining_display}}</div>
-            </div>
-            <div class="dep-page__item">
-              <div class="dep-page__label-row">
-                <div class="dep-page__label">{{i18n "admin.disify_email_protection.health.label_validation_quota"}}</div>
-                <button class="dep-page__info" type="button" aria-label={{i18n "admin.disify_email_protection.health.info_validation_quota"}} aria-expanded={{eq @controller.activeInfoKey "validation_quota"}} aria-controls="dep-health-info-overlay" {{on "click" (fn @controller.toggleInfo "validation_quota")}} {{on "keydown" (fn @controller.handleInfoTriggerKeydown "validation_quota")}}>i</button>
-              </div>
-              <div class="dep-page__value">{{@controller.data.provider.validation_quota_display}}</div>
             </div>
             {{#if @controller.data.provider.reset_at}}
               <div class="dep-page__item">

@@ -35,7 +35,7 @@ RSpec.describe DisifyEmailProtection::AdminController do
       expect(response.status).to eq(404).or eq(403)
     end
 
-    it "returns only the live scan state and quota to administrators" do
+    it "returns only the live scan state to administrators" do
       PluginStore.set(
         DisifyEmailProtection::STORE_NAMESPACE,
         DisifyEmailProtection::ExistingUserScan::STATE_KEY,
@@ -57,7 +57,7 @@ RSpec.describe DisifyEmailProtection::AdminController do
       json = response.parsed_body
       expect(json.dig("scan", "status")).to eq("running")
       expect(json.dig("scan", "processed")).to eq(2)
-      expect(json).to have_key("quota")
+      expect(json).not_to have_key("quota")
       expect(json).not_to have_key("exceptions")
       expect(json).not_to have_key("scan_estimate")
       expect(response.headers["Cache-Control"]).to include("no-store")
@@ -113,6 +113,53 @@ RSpec.describe DisifyEmailProtection::AdminController do
       expect(response.status).to eq(200)
       expect(response.parsed_body.dig("scan", "scan_id")).to eq(first_scan_id)
       expect(Jobs).to have_received(:enqueue).once
+    end
+  end
+
+  describe "POST /admin/plugins/disify-email-protection/review/:id/approve-permanent.json" do
+    it "requires an administrator" do
+      item = DisifyEmailProtection::ReviewItem.create!(
+        user_id: user.id,
+        email_domain: "example.com",
+        email_hmac: DisifyEmailProtection::Normalizer.email_hmac("restricted-review@example.com"),
+        flow: "existing_user_scan",
+        reason: "disposable",
+        confidence: 100,
+        signals: ["blacklist_exact"],
+        state: "pending",
+        metadata: {},
+      )
+
+      sign_in(user)
+      post "/admin/plugins/disify-email-protection/review/#{item.id}/approve-permanent.json"
+
+      expect(response.status).to eq(404).or eq(403)
+      expect(item.reload.state).to eq("pending")
+    end
+
+    it "permanently approves only the reviewed email HMAC for administrators" do
+      email = "permanent-review@example.com"
+      item = DisifyEmailProtection::ReviewItem.create!(
+        user_id: user.id,
+        email_domain: "example.com",
+        email_hmac: DisifyEmailProtection::Normalizer.email_hmac(email),
+        flow: "existing_user_scan",
+        reason: "disposable",
+        confidence: 100,
+        signals: ["blacklist_exact"],
+        state: "pending",
+        metadata: {},
+      )
+
+      sign_in(admin)
+      post "/admin/plugins/disify-email-protection/review/#{item.id}/approve-permanent.json"
+
+      expect(response.status).to eq(200)
+      exception = DisifyEmailProtection::PolicyException.order(:id).last
+      expect(exception.kind).to eq("allow_email_hmac")
+      expect(exception.value).to eq(item.email_hmac)
+      expect(exception.expires_at).to be_nil
+      expect(item.reload.metadata["resolution"]).to eq("allow_permanent")
     end
   end
 

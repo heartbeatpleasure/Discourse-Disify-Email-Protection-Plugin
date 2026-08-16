@@ -107,6 +107,14 @@ export default RouteTemplate(
         font-weight: 700;
         line-height: 1.25;
         overflow-wrap: anywhere;
+        text-decoration: none;
+      }
+      a.dep-review__user:hover,
+      a.dep-review__user:focus-visible,
+      .dep-review__resolution a:hover,
+      .dep-review__resolution a:focus-visible {
+        color: var(--tertiary);
+        text-decoration: underline;
       }
       .dep-review__domain {
         color: var(--dep-muted);
@@ -254,7 +262,7 @@ export default RouteTemplate(
                 <div class="dep-review__card-header">
                   <div class="dep-review__identity">
                     {{#if item.user}}
-                      <a class="dep-review__user" href={{item.user_url}}>@{{item.user.username}}</a>
+                      <a class="dep-review__user" href={{item.user_url}}>{{item.user.username}}</a>
                     {{else}}
                       <span class="dep-review__user">{{i18n "admin.disify_email_protection.review.anonymous_signup"}}</span>
                     {{/if}}
@@ -301,10 +309,16 @@ export default RouteTemplate(
                         {{i18n "admin.disify_email_protection.review.resolved_at"}}:
                         <strong>{{item.resolved_at_display}}</strong>
                       </div>
+                      {{#if item.resolution_label}}
+                        <div>
+                          {{i18n "admin.disify_email_protection.review.resolution"}}:
+                          <strong>{{item.resolution_label}}</strong>
+                        </div>
+                      {{/if}}
                       {{#if item.resolved_by}}
                         <div>
                           {{i18n "admin.disify_email_protection.review.resolved_by"}}:
-                          <strong>@{{item.resolved_by.username}}</strong>
+                          <a href={{item.resolved_by_url}}><strong>{{item.resolved_by.username}}</strong></a>
                         </div>
                       {{/if}}
                     {{/unless}}
@@ -313,6 +327,7 @@ export default RouteTemplate(
                   {{#if (eq item.state "pending")}}
                     <div class="dep-review__card-actions">
                       <button class="btn btn-primary" type="button" disabled={{@controller.workingId}} {{on "click" (fn @controller.approve item)}}>{{i18n "admin.disify_email_protection.review.approve"}}</button>
+                      <button class="btn" type="button" disabled={{@controller.workingId}} {{on "click" (fn @controller.approvePermanently item)}}>{{i18n "admin.disify_email_protection.review.approve_permanent"}}</button>
                       <button class="btn btn-danger" type="button" disabled={{@controller.workingId}} {{on "click" (fn @controller.reject item)}}>{{i18n "admin.disify_email_protection.review.reject"}}</button>
                       {{#if item.user}}
                         <button class="btn" type="button" disabled={{@controller.workingId}} {{on "click" (fn @controller.recheck item)}}>{{i18n "admin.disify_email_protection.review.recheck"}}</button>

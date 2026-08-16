@@ -68,6 +68,20 @@ module ::DisifyEmailProtection
       render_json_dump(success: true, item: serialize_review_item(item.reload))
     end
 
+    def approve_review_permanently
+      rate_limit_admin_action!("review-approve-permanent")
+      item = ReviewItem.find(params[:id].to_i)
+      ReviewQueue.approve_permanently!(item, current_user)
+      UserNoteWriter.record!(
+        user: item.user,
+        reason: item.reason,
+        domain: item.email_domain,
+        confidence: item.confidence,
+        context: "email risk review permanently approved by staff",
+      ) if item.user.present?
+      render_json_dump(success: true, item: serialize_review_item(item.reload))
+    end
+
     def reject_review
       rate_limit_admin_action!("review-reject")
       item = ReviewItem.find(params[:id].to_i)
@@ -107,11 +121,6 @@ module ::DisifyEmailProtection
           configured_batch_size: SiteSetting.disify_email_protection_max_scan_batch_size.to_i,
           configured_mode: SiteSetting.disify_email_protection_manual_scan_full_email_mode.to_s,
         },
-        quota: Health.stored_health.slice(
-          "rate_limit_limit",
-          "rate_limit_remaining",
-          "reset_at",
-        ),
         exceptions: PolicyException.effective.order(id: :desc).limit(200).map { |item| serialize_exception(item) },
       )
     end
@@ -119,11 +128,6 @@ module ::DisifyEmailProtection
     def scan_status
       render_json_dump(
         scan: ExistingUserScan.state,
-        quota: Health.stored_health.slice(
-          "rate_limit_limit",
-          "rate_limit_remaining",
-          "reset_at",
-        ),
       )
     end
 
@@ -233,6 +237,7 @@ module ::DisifyEmailProtection
         signals: item.signals,
         created_at: item.created_at&.iso8601,
         resolved_at: item.resolved_at&.iso8601,
+        resolution: item.metadata.to_h["resolution"],
         user: item.user && {
           id: item.user.id,
           username: item.user.username,

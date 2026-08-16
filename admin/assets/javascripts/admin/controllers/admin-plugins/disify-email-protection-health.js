@@ -9,6 +9,18 @@ import { formatDisifyDate } from "../../lib/disify-date";
 import { i18n } from "discourse-i18n";
 
 const HEALTH_INFO_TOPICS = Object.freeze({
+  mode: {
+    title: "admin.disify_email_protection.health.label_mode",
+    body: "admin.disify_email_protection.health.info_mode",
+  },
+  auth_mode: {
+    title: "admin.disify_email_protection.health.label_auth_mode",
+    body: "admin.disify_email_protection.health.info_auth_mode",
+  },
+  fail_open: {
+    title: "admin.disify_email_protection.health.label_fail_open",
+    body: "admin.disify_email_protection.health.info_fail_open",
+  },
   last_check: {
     title: "admin.disify_email_protection.health.label_last_check",
     body: "admin.disify_email_protection.health.info_last_check",
@@ -24,14 +36,6 @@ const HEALTH_INFO_TOPICS = Object.freeze({
   rate_limit: {
     title: "admin.disify_email_protection.health.label_rate_limit",
     body: "admin.disify_email_protection.health.info_rate_limit",
-  },
-  remaining: {
-    title: "admin.disify_email_protection.health.label_remaining",
-    body: "admin.disify_email_protection.health.info_remaining",
-  },
-  validation_quota: {
-    title: "admin.disify_email_protection.health.label_validation_quota",
-    body: "admin.disify_email_protection.health.info_validation_quota",
   },
   reset_at: {
     title: "admin.disify_email_protection.health.label_reset_at",
@@ -148,15 +152,10 @@ export default class AdminPluginsDisifyEmailProtectionHealthController extends C
           data.provider?.rate_limit_limit === null ||
           data.provider?.rate_limit_limit === undefined
             ? "—"
-            : data.provider.rate_limit_limit,
-        rate_limit_remaining_display:
-          data.provider?.rate_limit_remaining === null ||
-          data.provider?.rate_limit_remaining === undefined
-            ? "—"
-            : data.provider.rate_limit_remaining,
-        validation_quota_display: i18n(
-          "admin.disify_email_protection.health.validation_quota_not_reported"
-        ),
+            : i18n(
+                "admin.disify_email_protection.health.rate_limit_per_minute",
+                { count: data.provider.rate_limit_limit }
+              ),
       },
       circuit_breaker: {
         ...(data.circuit_breaker || {}),

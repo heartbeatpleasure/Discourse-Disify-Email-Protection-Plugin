@@ -4,12 +4,26 @@ import { service } from "@ember/service";
 import { tracked } from "@glimmer/tracking";
 import { ajax } from "discourse/lib/ajax";
 import { popupAjaxError } from "discourse/lib/ajax-error";
+import getURL from "discourse/lib/get-url";
 import { formatDisifyDate } from "../../lib/disify-date";
 import { i18n } from "discourse-i18n";
 
 const SCAN_POLL_INTERVAL_MS = 3000;
 const MAX_CONSECUTIVE_SCAN_POLL_FAILURES = 3;
 const POLLED_SCAN_STATUSES = new Set(["running", "waiting"]);
+
+function exceptionKindLabel(kind) {
+  const key = {
+    allow_domain: "exception_kind_allow_domain",
+    block_domain: "exception_kind_block_domain",
+    allow_email_hmac: "exception_kind_allow_email",
+    block_email_hmac: "exception_kind_block_email",
+  }[kind];
+
+  return key
+    ? i18n(`admin.disify_email_protection.tools.${key}`)
+    : kind;
+}
 
 export default class AdminPluginsDisifyEmailProtectionToolsController extends Controller {
   @service dialog;
@@ -101,7 +115,7 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
       case "paused":
         return i18n("admin.disify_email_protection.tools.scan_status_paused");
       case "completed":
-        return i18n("admin.disify_email_protection.tools.scan_status_completed");
+        return null;
       case "cancelled":
         return i18n("admin.disify_email_protection.tools.scan_status_cancelled");
       default:
@@ -208,7 +222,6 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
       this.data = {
         ...this.data,
         scan: data.scan,
-        quota: data.quota,
       };
     } catch (error) {
       if (
@@ -247,7 +260,14 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
         ...data,
         exceptions: (data?.exceptions || []).map((item) => ({
           ...item,
-          expires_at_display: formatDisifyDate(item.expires_at),
+          kind_label: exceptionKindLabel(item.kind),
+          expires_at_display: item.expires_at
+            ? formatDisifyDate(item.expires_at)
+            : i18n("admin.disify_email_protection.tools.exception_never_expires"),
+          created_at_display: formatDisifyDate(item.created_at),
+          created_by_url: item.created_by?.username
+            ? getURL(`/u/${encodeURIComponent(item.created_by.username)}`)
+            : null,
         })),
       };
       this.scanMode = this.data?.scan_estimate?.configured_mode || "domain_only";

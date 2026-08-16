@@ -54,3 +54,30 @@ export function formatDisifyDate(value) {
     return fallback.tz(timezone).format("D MMM YYYY, HH:mm");
   }
 }
+
+export function formatDisifyDateOnly(value) {
+  if (!value) {
+    return "—";
+  }
+
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return value;
+  }
+
+  const [, year, month, day] = match;
+  const parsed = new Date(
+    Date.UTC(Number(year), Number(month) - 1, Number(day), 12, 0, 0)
+  );
+
+  try {
+    return new Intl.DateTimeFormat(browserLocales(), {
+      timeZone: "UTC",
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+    }).format(parsed);
+  } catch {
+    return moment.utc(value, "YYYY-MM-DD", true).format("D MMM YYYY");
+  }
+}

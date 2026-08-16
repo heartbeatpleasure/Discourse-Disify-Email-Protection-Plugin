@@ -137,14 +137,66 @@ plugins:
     default: false
     client: false
 
-  disify_email_protection_moderator_digest_enabled:
+  disify_email_protection_activity_digest_enabled:
     default: false
     client: false
 
-  disify_email_protection_moderator_digest_group:
+  disify_email_protection_activity_digest_recipients:
     default: "staff"
-    type: string
+    type: enum
+    choices:
+      - admins
+      - staff
     client: false
+
+  disify_email_protection_activity_digest_frequency:
+    default: "weekly"
+    type: enum
+    choices:
+      - daily
+      - weekly
+      - monthly
+    client: false
+
+  disify_email_protection_activity_digest_send_time:
+    default: "09:00"
+    type: string
+    regex: "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+    client: false
+
+  disify_email_protection_activity_digest_weekday:
+    default: "monday"
+    type: enum
+    choices:
+      - monday
+      - tuesday
+      - wednesday
+      - thursday
+      - friday
+      - saturday
+      - sunday
+    client: false
+    depends_on:
+      - disify_email_protection_activity_digest_frequency
+    depends_on_values:
+      disify_email_protection_activity_digest_frequency:
+        - weekly
+    depends_behavior: "hidden"
+    dependent_setting_display: "inline"
+
+  disify_email_protection_activity_digest_day_of_month:
+    default: 1
+    type: integer
+    min: 1
+    max: 28
+    client: false
+    depends_on:
+      - disify_email_protection_activity_digest_frequency
+    depends_on_values:
+      disify_email_protection_activity_digest_frequency:
+        - monthly
+    depends_behavior: "hidden"
+    dependent_setting_display: "inline"
 
   disify_email_protection_manual_scan_enabled:
     default: true

@@ -24,8 +24,12 @@ en:
     disify_email_protection_review_queue_notification_recipients: "Who receives grouped review-queue reminders: admins only, or staff (admins and moderators together). Moderators are not offered as the sole recipient because the review queue remains admin-only."
     disify_email_protection_review_queue_notification_interval_days: "Minimum number of days between grouped review-queue reminders while pending items remain. The scheduled check runs daily; default is 30 days."
     disify_email_protection_user_notes_enabled: "Add selected staff notes for existing-user risk events when Discourse User Notes is enabled."
-    disify_email_protection_moderator_digest_enabled: "Send a daily private-message summary when meaningful email-risk activity exists. This is separate from the grouped review-queue reminder."
-    disify_email_protection_moderator_digest_group: "Group that receives the optional daily email-risk summary."
+    disify_email_protection_activity_digest_enabled: "Send a grouped private-message activity summary on the configured schedule when meaningful email-protection activity occurred. This is separate from the persistent review-queue reminder. Disabled by default."
+    disify_email_protection_activity_digest_recipients: "Who receives the activity digest: admins only, or staff (admins and moderators together)."
+    disify_email_protection_activity_digest_frequency: "How often the activity digest is scheduled: daily, weekly, or monthly. Weekly is the default."
+    disify_email_protection_activity_digest_send_time: "Scheduled digest time in 24-hour HH:MM format. The time is interpreted as UTC so one group message has a single predictable schedule. Delivery occurs on the first 15-minute scheduler check at or after this time."
+    disify_email_protection_activity_digest_weekday: "Weekday used only when {{setting:disify_email_protection_activity_digest_frequency}} is set to weekly."
+    disify_email_protection_activity_digest_day_of_month: "Day of the month used only when {{setting:disify_email_protection_activity_digest_frequency}} is set to monthly. Limited to 1-28 so every month has the configured day."
     disify_email_protection_manual_scan_enabled: "Allow admins to launch a manual scan of existing users."
     disify_email_protection_manual_scan_full_email_mode: "Data mode for manual existing-user scans."
     disify_email_protection_max_scan_batch_size: "Maximum number of users processed by one existing-user scan job batch."
@@ -35,6 +39,22 @@ en:
       disify_email_protection_operational_health: "Disposable Email Protection is degraded (%{status}; %{reason}). <a href='%{base_path}/admin/plugins/disify-email-protection-health'>Open Email Protection Health</a>."
 
   disify_email_protection:
+    activity_digest:
+      title: "Email protection activity digest"
+      body: |
+        Email protection activity for **%{period}**:
+
+        - Monitored risk events: %{monitored}
+        - Review decisions: %{reviewed}
+        - Blocked attempts: %{blocked}
+        - Fail-open events: %{fail_open}
+        - External validation failures: %{failures}
+        - New review items: %{new_reviews}
+        - Current pending review items: %{pending}
+        - Current health: %{health}
+
+        Administrators can review details in **Admin > Plugins > Disposable Email Protection**.
+
     review_queue_notification:
       title: "Email protection review queue reminder"
       body:

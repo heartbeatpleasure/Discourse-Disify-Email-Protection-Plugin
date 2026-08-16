@@ -2,11 +2,10 @@
 
 module Jobs
   class DisifyEmailProtectionModeratorDigest < ::Jobs::Scheduled
-    every 1.day
+    every 15.minutes
 
     def execute(_args)
       ::DisifyEmailProtection::ModeratorDigest.send_if_needed!
-      ::DisifyEmailProtection::ReviewQueueNotifier.send_if_needed!
     end
   end
 end

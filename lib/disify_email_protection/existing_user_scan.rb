@@ -55,7 +55,14 @@ module ::DisifyEmailProtection
         new_state
       end
 
-      Jobs.enqueue(:disify_existing_user_scan, scan_id: payload["scan_id"]) if should_enqueue
+      if should_enqueue
+        begin
+          Jobs.enqueue(Jobs::DisifyExistingUserScan, scan_id: payload["scan_id"])
+        rescue StandardError
+          pause_error_if_active!(payload["scan_id"], "enqueue_failed")
+          raise
+        end
+      end
       payload
     end
 
@@ -75,7 +82,12 @@ module ::DisifyEmailProtection
         scan
       end
 
-      Jobs.enqueue(:disify_existing_user_scan, scan_id: current["scan_id"])
+      begin
+        Jobs.enqueue(Jobs::DisifyExistingUserScan, scan_id: current["scan_id"])
+      rescue StandardError
+        pause_error_if_active!(current["scan_id"], "enqueue_failed")
+        raise
+      end
       current
     end
 

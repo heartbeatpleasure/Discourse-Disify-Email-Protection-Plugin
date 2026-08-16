@@ -181,7 +181,7 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
         count: userCount,
         data_notice: dataNotice,
       }),
-      confirmButtonLabel: i18n("admin.disify_email_protection.tools.start_scan_dialog_confirm"),
+      confirmButtonLabel: "admin.disify_email_protection.tools.start_scan_dialog_confirm",
       didConfirm: () => this.startScanNow(requestId),
     });
   }
@@ -241,7 +241,7 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
     this.dialog.confirm({
       title: i18n("admin.disify_email_protection.tools.cancel_scan_dialog_title"),
       message: i18n("admin.disify_email_protection.tools.cancel_scan_dialog_message"),
-      confirmButtonLabel: i18n("admin.disify_email_protection.tools.cancel_scan_dialog_confirm"),
+      confirmButtonLabel: "admin.disify_email_protection.tools.cancel_scan_dialog_confirm",
       didConfirm: () => this.cancelScanNow(),
     });
   }

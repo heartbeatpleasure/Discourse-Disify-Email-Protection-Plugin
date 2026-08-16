@@ -52,6 +52,12 @@ after_initialize do
   require_relative "lib/disify_email_protection/decision"
   require_relative "lib/disify_email_protection/existing_user_scan"
   require_relative "lib/disify_email_protection/moderator_digest"
+
+  require_relative "app/jobs/regular/disify_existing_user_scan"
+  require_relative "app/jobs/scheduled/disify_email_protection_cleanup"
+  require_relative "app/jobs/scheduled/disify_email_protection_health_check"
+  require_relative "app/jobs/scheduled/disify_email_protection_moderator_digest"
+
   require_relative "app/services/problem_check/disify_email_protection_operational_health"
   register_problem_check ProblemCheck::DisifyEmailProtectionOperationalHealth
 

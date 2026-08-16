@@ -65,6 +65,22 @@ export default class AdminPluginsDisifyEmailProtectionHealthController extends C
         ...(data.provider || {}),
         last_success_at_display: formatDisifyDate(data.provider?.last_success_at),
         reset_at_display: formatDisifyDate(data.provider?.reset_at),
+        last_error_code_display: data.provider?.last_error_code || "—",
+        last_latency_ms_display:
+          data.provider?.last_latency_ms === null ||
+          data.provider?.last_latency_ms === undefined
+            ? "—"
+            : data.provider.last_latency_ms,
+        rate_limit_limit_display:
+          data.provider?.rate_limit_limit === null ||
+          data.provider?.rate_limit_limit === undefined
+            ? "—"
+            : data.provider.rate_limit_limit,
+        rate_limit_remaining_display:
+          data.provider?.rate_limit_remaining === null ||
+          data.provider?.rate_limit_remaining === undefined
+            ? "—"
+            : data.provider.rate_limit_remaining,
       },
       circuit_breaker: {
         ...(data.circuit_breaker || {}),

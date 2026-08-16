@@ -4,8 +4,58 @@ import { service } from "@ember/service";
 import { tracked } from "@glimmer/tracking";
 import { ajax } from "discourse/lib/ajax";
 import { popupAjaxError } from "discourse/lib/ajax-error";
+import getURL from "discourse/lib/get-url";
 import { formatDisifyDate } from "../../lib/disify-date";
 import { i18n } from "discourse-i18n";
+
+function humanizeToken(value) {
+  const text = value?.toString().trim();
+  if (!text) {
+    return "—";
+  }
+
+  const normalized = text.replace(/_/g, " ");
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function stateLabel(state) {
+  const key = {
+    pending: "state_pending",
+    approved: "state_approved",
+    rejected: "state_rejected",
+    expired: "state_expired",
+  }[state];
+
+  return key
+    ? i18n(`admin.disify_email_protection.review.${key}`)
+    : humanizeToken(state);
+}
+
+function reasonLabel(reason) {
+  const key = {
+    disposable: "reason_disposable",
+    disposable_low_confidence: "reason_disposable_low_confidence",
+    no_mx: "reason_no_mx",
+    role: "reason_role",
+    policy_block: "reason_policy_block",
+  }[reason];
+
+  return key
+    ? i18n(`admin.disify_email_protection.review.${key}`)
+    : humanizeToken(reason);
+}
+
+function flowLabel(flow) {
+  const key = {
+    signup: "flow_signup",
+    email_change: "flow_email_change",
+    existing_user_scan: "flow_existing_user_scan",
+  }[flow];
+
+  return key
+    ? i18n(`admin.disify_email_protection.review.${key}`)
+    : humanizeToken(flow);
+}
 
 export default class AdminPluginsDisifyEmailProtectionReviewController extends Controller {
   @service toasts;
@@ -15,6 +65,24 @@ export default class AdminPluginsDisifyEmailProtectionReviewController extends C
   @tracked page = 1;
   @tracked isLoading = false;
   @tracked workingId;
+
+  get hasPreviousPage() {
+    return this.page > 1;
+  }
+
+  get hasNextPage() {
+    return Boolean(
+      this.data && this.page * this.data.per_page < this.data.total
+    );
+  }
+
+  get previousPageDisabled() {
+    return this.isLoading || !this.hasPreviousPage;
+  }
+
+  get nextPageDisabled() {
+    return this.isLoading || !this.hasNextPage;
+  }
 
   resetState() {
     this.data = undefined;
@@ -26,6 +94,10 @@ export default class AdminPluginsDisifyEmailProtectionReviewController extends C
 
   @action
   async loadReview() {
+    if (this.isLoading) {
+      return;
+    }
+
     this.isLoading = true;
     try {
       const query = new URLSearchParams({
@@ -41,6 +113,22 @@ export default class AdminPluginsDisifyEmailProtectionReviewController extends C
           ...item,
           created_at_display: formatDisifyDate(item.created_at),
           resolved_at_display: formatDisifyDate(item.resolved_at),
+          state_label: stateLabel(item.state),
+          reason_label: reasonLabel(item.reason),
+          flow_label: flowLabel(item.flow),
+          confidence_display:
+            item.confidence === null || item.confidence === undefined
+              ? "—"
+              : `${item.confidence} / 100`,
+          signals_display: (Array.isArray(item.signals) ? item.signals : []).map(
+            (signal) => ({
+              raw: signal,
+              label: humanizeToken(signal),
+            })
+          ),
+          user_url: item.user?.username
+            ? getURL(`/u/${encodeURIComponent(item.user.username)}`)
+            : null,
         })),
       };
     } catch (error) {
@@ -58,6 +146,10 @@ export default class AdminPluginsDisifyEmailProtectionReviewController extends C
   }
 
   async perform(item, action, successMessageKey) {
+    if (this.workingId) {
+      return;
+    }
+
     this.workingId = item.id;
     try {
       await ajax(
@@ -75,22 +167,34 @@ export default class AdminPluginsDisifyEmailProtectionReviewController extends C
 
   @action
   approve(item) {
-    return this.perform(item, "approve", "admin.disify_email_protection.review.approve_success");
+    return this.perform(
+      item,
+      "approve",
+      "admin.disify_email_protection.review.approve_success"
+    );
   }
 
   @action
   reject(item) {
-    return this.perform(item, "reject", "admin.disify_email_protection.review.reject_success");
+    return this.perform(
+      item,
+      "reject",
+      "admin.disify_email_protection.review.reject_success"
+    );
   }
 
   @action
   recheck(item) {
-    return this.perform(item, "recheck", "admin.disify_email_protection.review.recheck_success");
+    return this.perform(
+      item,
+      "recheck",
+      "admin.disify_email_protection.review.recheck_success"
+    );
   }
 
   @action
   previousPage() {
-    if (this.page <= 1) {
+    if (!this.hasPreviousPage || this.isLoading) {
       return;
     }
     this.page -= 1;
@@ -99,7 +203,7 @@ export default class AdminPluginsDisifyEmailProtectionReviewController extends C
 
   @action
   nextPage() {
-    if (!this.data || this.page * this.data.per_page >= this.data.total) {
+    if (!this.hasNextPage || this.isLoading) {
       return;
     }
     this.page += 1;

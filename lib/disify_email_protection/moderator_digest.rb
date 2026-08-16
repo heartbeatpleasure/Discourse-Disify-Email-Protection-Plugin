@@ -10,7 +10,9 @@ module ::DisifyEmailProtection
       return false unless SiteSetting.disify_email_protection_enabled
       return false unless SiteSetting.disify_email_protection_moderator_digest_enabled
 
-      group_name = SiteSetting.disify_email_protection_moderator_digest_group.to_s.strip
+      group_name = SiteSetting.disify_email_protection_moderator_digest_group.to_s.strip.first(100)
+      return false if group_name.blank?
+
       group = Group.find_by("lower(name) = ?", group_name.downcase)
       return false if group.blank?
 

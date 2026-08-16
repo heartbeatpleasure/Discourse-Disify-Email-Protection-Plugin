@@ -60,4 +60,11 @@ RSpec.describe DisifyEmailProtection::ReviewQueue do
       ).to eq(1)
     end
   end
+
+  it "rejects review decisions from non-admin actors" do
+    item = build_review_item
+    expect { described_class.approve!(item, user) }.to raise_error(Discourse::InvalidAccess)
+    expect(item.reload.state).to eq("pending")
+  end
+
 end

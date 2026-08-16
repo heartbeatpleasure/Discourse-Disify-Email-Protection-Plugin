@@ -2,8 +2,13 @@
 
 module Jobs
   class DisifyExistingUserScan < ::Jobs::Base
+    SCAN_ID_PATTERN = /\A[0-9a-f]{16}\z/.freeze
+
     def execute(args)
-      ::DisifyEmailProtection::ExistingUserScan.process_batch!(args[:scan_id].to_s)
+      scan_id = args[:scan_id].to_s
+      return unless SCAN_ID_PATTERN.match?(scan_id)
+
+      ::DisifyEmailProtection::ExistingUserScan.process_batch!(scan_id)
     end
   end
 end

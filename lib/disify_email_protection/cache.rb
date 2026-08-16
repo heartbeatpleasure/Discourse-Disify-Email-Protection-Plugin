@@ -55,18 +55,25 @@ module ::DisifyEmailProtection
     end
 
     def persist(cache_key, check_type, domain, result, ttl)
-      now = Time.zone.now
-      row = EmailCheck.find_or_initialize_by(cache_key: cache_key)
-      row.check_type = check_type
-      row.email_domain = domain
-      row.result = result
-      row.checked_at = now
-      row.expires_at = now + ttl
-      row.save!
-    rescue ActiveRecord::RecordNotUnique
-      retry
+      attempts = 0
+      begin
+        now = Time.zone.now
+        row = EmailCheck.find_or_initialize_by(cache_key: cache_key)
+        row.check_type = check_type
+        row.email_domain = domain
+        row.result = result
+        row.checked_at = now
+        row.expires_at = now + ttl
+        row.save!
+      rescue ActiveRecord::RecordNotUnique
+        attempts += 1
+        retry if attempts <= 2
+        Rails.logger.warn("[disify_email_protection] cache write abandoned after uniqueness race")
+        nil
+      end
     rescue StandardError => e
       Rails.logger.warn("[disify_email_protection] cache write failed class=#{e.class}")
+      nil
     end
   end
 end

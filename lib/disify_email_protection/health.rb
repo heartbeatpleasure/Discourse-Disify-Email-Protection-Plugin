@@ -5,6 +5,7 @@ module ::DisifyEmailProtection
     module_function
 
     HEALTH_KEY = "health_state"
+    HEALTH_MUTEX_KEY = "disify-email-protection-health-state"
 
     def payload
       health = stored_health
@@ -56,28 +57,30 @@ module ::DisifyEmailProtection
     end
 
     def record_result!(result, source:)
-      current = stored_health
-      now = Time.zone.now.iso8601
-      current["last_check_at"] = now
-      current["last_source"] = source
-      current["last_latency_ms"] = result.latency_ms
-      current["rate_limit_limit"] = result.rate_limit_limit
-      current["rate_limit_remaining"] = result.rate_limit_remaining
-      current["reset_at"] = result.reset_at&.iso8601
+      DistributedMutex.synchronize(HEALTH_MUTEX_KEY, validity: 10) do
+        current = stored_health
+        now = Time.zone.now.iso8601
+        current["last_check_at"] = now
+        current["last_source"] = source.to_s.first(64)
+        current["last_latency_ms"] = result.latency_ms
+        current["rate_limit_limit"] = result.rate_limit_limit
+        current["rate_limit_remaining"] = result.rate_limit_remaining
+        current["reset_at"] = result.reset_at&.iso8601
 
-      if result.success
-        current["last_success_at"] = now
-        current["last_error_at"] = nil
-        current["last_error_code"] = nil
-        current["last_error_message"] = nil
-      else
-        current["last_error_at"] = now
-        current["last_error_code"] = result.error_code.to_s
-        current["last_error_message"] = nil
+        if result.success
+          current["last_success_at"] = now
+          current["last_error_at"] = nil
+          current["last_error_code"] = nil
+          current["last_error_message"] = nil
+        else
+          current["last_error_at"] = now
+          current["last_error_code"] = result.error_code.to_s.first(64)
+          current["last_error_message"] = nil
+        end
+
+        PluginStore.set(STORE_NAMESPACE, HEALTH_KEY, current)
+        current
       end
-
-      PluginStore.set(STORE_NAMESPACE, HEALTH_KEY, current)
-      current
     rescue StandardError => e
       Rails.logger.warn("[disify_email_protection] health persistence failed class=#{e.class}")
       {}
@@ -103,7 +106,6 @@ module ::DisifyEmailProtection
         success: result.success,
         status: result.status,
         error_code: result.error_code&.to_s,
-        error_message: result.error_message,
         latency_ms: result.latency_ms,
         rate_limit_limit: result.rate_limit_limit,
         rate_limit_remaining: result.rate_limit_remaining,

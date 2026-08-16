@@ -125,4 +125,45 @@ RSpec.describe DisifyEmailProtection::ExistingUserScan do
     expect(state["last_error"]).to eq("enqueue_failed")
   end
 
+  it "checkpoints progress so a long active batch keeps a fresh heartbeat" do
+    current = {
+      "scan_id" => "checkpoint-scan",
+      "status" => "running",
+      "cursor" => 25,
+      "processed" => 20,
+      "flagged" => 2,
+      "last_activity_at" => 20.minutes.ago.iso8601,
+    }
+    PluginStore.set(
+      DisifyEmailProtection::STORE_NAMESPACE,
+      described_class::STATE_KEY,
+      current.merge("cursor" => 10, "processed" => 10, "flagged" => 1),
+    )
+
+    expect(described_class.checkpoint_progress_if_active!(current, "checkpoint-scan")).to eq(true)
+    state = described_class.raw_state
+    expect(state["cursor"]).to eq(25)
+    expect(state["processed"]).to eq(20)
+    expect(state["flagged"]).to eq(2)
+    expect(Time.zone.parse(state["last_activity_at"])).to be > 1.minute.ago
+  end
+
+  it "rejects control characters in a scan request id" do
+    expect do
+      described_class.start!(actor: admin, scan_mode: "domain_only", request_id: "bad\nrequest")
+    end.to raise_error(Discourse::InvalidParameters)
+  end
+
+  it "proactively pauses large scans before exhausting the last provider request slot" do
+    PluginStore.set(
+      DisifyEmailProtection::STORE_NAMESPACE,
+      DisifyEmailProtection::Health::HEALTH_KEY,
+      { "rate_limit_limit" => 10, "rate_limit_remaining" => 1 },
+    )
+
+    expect(described_class.provider_rate_limit_nearly_exhausted?).to eq(true)
+  ensure
+    PluginStore.remove(DisifyEmailProtection::STORE_NAMESPACE, DisifyEmailProtection::Health::HEALTH_KEY)
+  end
+
 end

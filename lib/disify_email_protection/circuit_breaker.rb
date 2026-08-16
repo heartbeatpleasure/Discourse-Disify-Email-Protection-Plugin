@@ -8,8 +8,10 @@ module ::DisifyEmailProtection
     FAILURE_KEY = "#{PREFIX}:failures"
     OPEN_UNTIL_KEY = "#{PREFIX}:open_until"
     REASON_KEY = "#{PREFIX}:reason"
+    STATE_MUTEX_KEY = "disify-email-protection-circuit-state"
     FAILURE_WINDOW = 5.minutes
     DEFAULT_OPEN = 5.minutes
+    PROTECTED_BACKOFF_REASONS = %w[rate_limited quota_exceeded].freeze
 
     def state
       until_time = open_until
@@ -19,16 +21,21 @@ module ::DisifyEmailProtection
         reason: Discourse.redis.get(REASON_KEY),
         consecutive_failures: Discourse.redis.get(FAILURE_KEY).to_i,
       }
+    rescue StandardError => e
+      Rails.logger.warn("[disify_email_protection] circuit state failed class=#{e.class}")
+      { state: "closed", open_until: nil, reason: nil, consecutive_failures: 0 }
     end
 
     def open?
-      open_until_time = open_until
-      if open_until_time.present? && open_until_time <= Time.zone.now
-        close!
-        return false
-      end
+      until_time = open_until
+      return false if until_time.blank?
+      return true if until_time > Time.zone.now
 
-      open_until_time.present?
+      close_if_expired!
+      false
+    rescue StandardError => e
+      Rails.logger.warn("[disify_email_protection] circuit read failed class=#{e.class}")
+      false
     end
 
     def allow_request?
@@ -36,7 +43,19 @@ module ::DisifyEmailProtection
     end
 
     def record_success!
-      close!
+      with_state_lock do
+        until_time = open_until_without_lock
+        reason = Discourse.redis.get(REASON_KEY).to_s
+
+        # A late in-flight success must not defeat an explicit 429/quota backoff.
+        next false if until_time.present? && until_time > Time.zone.now && PROTECTED_BACKOFF_REASONS.include?(reason)
+
+        close_without_lock!
+        true
+      end
+    rescue StandardError => e
+      Rails.logger.warn("[disify_email_protection] circuit success update failed class=#{e.class}")
+      false
     end
 
     def record_failure!(result)
@@ -62,6 +81,7 @@ module ::DisifyEmailProtection
       end
     rescue StandardError => e
       Rails.logger.warn("[disify_email_protection] circuit update failed class=#{e.class}")
+      false
     end
 
     def reset!
@@ -69,21 +89,57 @@ module ::DisifyEmailProtection
     end
 
     def open_until
+      open_until_without_lock
+    rescue StandardError => e
+      Rails.logger.warn("[disify_email_protection] circuit deadline read failed class=#{e.class}")
+      nil
+    end
+
+    def open_for!(duration, reason)
+      seconds = [duration.to_i, 1].max
+      proposed_until = Time.zone.now.to_i + seconds
+
+      with_state_lock do
+        current_until = Discourse.redis.get(OPEN_UNTIL_KEY).to_i
+        # Never shorten an already-active protection window because another
+        # request happened to fail later with a shorter retry period.
+        next Time.at(current_until).in_time_zone if current_until > proposed_until
+
+        ttl = [proposed_until - Time.zone.now.to_i, 1].max
+        Discourse.redis.setex(OPEN_UNTIL_KEY, ttl, proposed_until)
+        Discourse.redis.setex(REASON_KEY, ttl, reason.to_s.first(64))
+        Time.at(proposed_until).in_time_zone
+      end
+    end
+
+    def close!
+      with_state_lock { close_without_lock! }
+    rescue StandardError => e
+      Rails.logger.warn("[disify_email_protection] circuit close failed class=#{e.class}")
+      false
+    end
+
+    def close_if_expired!
+      with_state_lock do
+        until_time = open_until_without_lock
+        close_without_lock! if until_time.present? && until_time <= Time.zone.now
+      end
+    end
+
+    def open_until_without_lock
       raw = Discourse.redis.get(OPEN_UNTIL_KEY)
       return nil if raw.blank?
 
       Time.at(raw.to_i).in_time_zone
     end
 
-    def open_for!(duration, reason)
-      seconds = [duration.to_i, 1].max
-      until_epoch = Time.zone.now.to_i + seconds
-      Discourse.redis.setex(OPEN_UNTIL_KEY, seconds, until_epoch)
-      Discourse.redis.setex(REASON_KEY, seconds, reason.to_s)
+    def close_without_lock!
+      Discourse.redis.del(FAILURE_KEY, OPEN_UNTIL_KEY, REASON_KEY)
+      true
     end
 
-    def close!
-      Discourse.redis.del(FAILURE_KEY, OPEN_UNTIL_KEY, REASON_KEY)
+    def with_state_lock(&block)
+      DistributedMutex.synchronize(STATE_MUTEX_KEY, validity: 10, &block)
     end
   end
 end

@@ -14,7 +14,7 @@ module ::DisifyEmailProtection
 
       key = "#{user.id}:#{reason}:#{domain}:#{context}"
       last = PluginStore.get(NOTE_NAMESPACE, key)
-      return false if last.present? && Time.zone.parse(last.to_s) > 24.hours.ago
+      return false if recent_timestamp?(last)
 
       note = "Email risk protection: #{context}. Reason: #{reason}. Domain: #{domain}."
       note += " Confidence: #{confidence}." if confidence.present?
@@ -23,6 +23,15 @@ module ::DisifyEmailProtection
       true
     rescue StandardError => e
       Rails.logger.warn("[disify_email_protection] user note failed class=#{e.class}")
+      false
+    end
+
+    def recent_timestamp?(value)
+      return false if value.blank?
+
+      parsed = Time.zone.parse(value.to_s)
+      parsed.present? && parsed > 24.hours.ago
+    rescue ArgumentError, TypeError
       false
     end
   end

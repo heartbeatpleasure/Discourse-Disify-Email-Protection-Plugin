@@ -36,4 +36,14 @@ RSpec.describe ProblemCheck::DisifyEmailProtectionOperationalHealth do
     expect(problem.details[:status]).to eq("degraded")
     expect(problem.details[:reason]).to eq("read_timeout")
   end
+
+  it "surfaces an internal health-check failure instead of silently passing" do
+    allow(DisifyEmailProtection::Health).to receive(:payload).and_raise(StandardError, "boom")
+
+    problem = described_class.new.call
+    expect(problem).to be_present
+    expect(problem.details[:status]).to eq("internal_error")
+    expect(problem.details[:reason]).to eq("StandardError")
+  end
+
 end

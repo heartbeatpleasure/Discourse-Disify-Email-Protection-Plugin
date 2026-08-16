@@ -15,4 +15,26 @@ RSpec.describe DisifyEmailProtection::PolicyExceptions do
       expect(described_class.valid_domain?("invalid domain")).to eq(false)
     end
   end
+
+  describe "admin-only mutation hardening" do
+    fab!(:admin)
+    fab!(:user)
+
+    it "rejects policy mutations from non-admin actors" do
+      expect do
+        described_class.create!(kind: "allow_domain", value: "example.com", actor: user)
+      end.to raise_error(Discourse::InvalidAccess)
+    end
+
+    it "rejects unknown email exception actions" do
+      expect do
+        described_class.create_for_email!(
+          action: "unexpected",
+          email: "member@example.com",
+          actor: admin,
+        )
+      end.to raise_error(Discourse::InvalidParameters)
+    end
+  end
+
 end

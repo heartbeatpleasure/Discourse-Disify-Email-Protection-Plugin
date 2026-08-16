@@ -10,7 +10,11 @@ module ::DisifyEmailProtection
     STATES = %w[pending approved rejected expired].freeze
 
     validates :flow, :reason, :state, presence: true
-    validates :state, inclusion: { in: STATES }
+    validates :state, inclusion: { in: STATES }, length: { maximum: 16 }
+    validates :flow, :reason, length: { maximum: 32 }
+    validates :email_domain, length: { maximum: 255 }, allow_nil: true
+    validates :email_hmac, format: { with: /\A[0-9a-f]{64}\z/ }, allow_nil: true
+    validates :confidence, numericality: { only_integer: true, greater_than_or_equal_to: 0, less_than_or_equal_to: 100 }, allow_nil: true
 
     scope :pending, -> { where(state: "pending") }
   end

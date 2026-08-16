@@ -27,6 +27,7 @@ module ::DisifyEmailProtection
     end
 
     def create!(kind:, value:, actor:, reason: nil, expires_at: nil)
+      ensure_admin_actor!(actor)
       normalized = normalize_value(kind, value)
       raise Discourse::InvalidParameters.new(:value) if normalized.blank?
 
@@ -41,10 +42,13 @@ module ::DisifyEmailProtection
     end
 
     def create_for_email!(action:, email:, actor:, reason: nil, expires_at: nil)
+      ensure_admin_actor!(actor)
       normalized = Normalizer.email(email)
       raise Discourse::InvalidParameters.new(:email) unless EmailAddressValidator.valid_value?(normalized)
+      action = action.to_s
+      raise Discourse::InvalidParameters.new(:action) unless %w[allow block].include?(action)
 
-      kind = action.to_s == "allow" ? "allow_email_hmac" : "block_email_hmac"
+      kind = action == "allow" ? "allow_email_hmac" : "block_email_hmac"
       create!(
         kind: kind,
         value: Normalizer.email_hmac(normalized),
@@ -52,6 +56,10 @@ module ::DisifyEmailProtection
         reason: reason,
         expires_at: expires_at,
       )
+    end
+
+    def ensure_admin_actor!(actor)
+      raise Discourse::InvalidAccess unless actor&.admin?
     end
 
     def normalize_value(kind, value)

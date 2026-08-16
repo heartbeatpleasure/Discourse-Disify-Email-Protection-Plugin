@@ -8,6 +8,9 @@ module ::DisifyEmailProtection
     STATE_MUTEX_KEY = "disify-email-protection-existing-user-scan-state"
     NORMAL_BATCH_DELAY = 65.seconds
     STALE_AFTER = 10.minutes
+    CHECKPOINT_EVERY = 10
+    PROVIDER_RATE_LIMIT_RESERVE = 1
+    REQUEST_ID_PATTERN = /\A[a-z0-9._:-]{1,128}\z/i
     ACTIVE_STATUSES = %w[running waiting].freeze
     BLOCKING_STATUSES = %w[running waiting paused].freeze
 
@@ -115,10 +118,11 @@ module ::DisifyEmailProtection
         scan = normalize_stale_without_lock!(raw_state)
         next nil unless scan["scan_id"] == scan_id && ACTIVE_STATUSES.include?(scan["status"])
 
+        was_waiting = scan["status"] == "waiting"
         scan["status"] = "running"
         scan["last_activity_at"] = Time.zone.now.iso8601
         scan["next_run_at"] = nil
-        scan["last_error"] = nil if scan["last_error"] == "circuit_open"
+        scan["last_error"] = nil if was_waiting
         store(scan)
         scan
       end
@@ -137,6 +141,7 @@ module ::DisifyEmailProtection
         return
       end
 
+      processed_since_checkpoint = 0
       users.each do |user|
         return unless still_active?(scan_id)
 
@@ -145,6 +150,11 @@ module ::DisifyEmailProtection
           current["processed"] = current["processed"].to_i + 1
           current["cursor"] = user.id
           current["last_activity_at"] = Time.zone.now.iso8601
+          processed_since_checkpoint += 1
+          if processed_since_checkpoint >= CHECKPOINT_EVERY
+            return unless checkpoint_progress_if_active!(current, scan_id)
+            processed_since_checkpoint = 0
+          end
           next
         end
 
@@ -196,6 +206,16 @@ module ::DisifyEmailProtection
         current["processed"] = current["processed"].to_i + 1
         current["cursor"] = user.id
         current["last_activity_at"] = Time.zone.now.iso8601
+        processed_since_checkpoint += 1
+        if processed_since_checkpoint >= CHECKPOINT_EVERY
+          return unless checkpoint_progress_if_active!(current, scan_id)
+          processed_since_checkpoint = 0
+        end
+
+        if result.source == "api" && provider_rate_limit_nearly_exhausted?
+          wait_for_provider!(current, scan_id, "rate_limit_window")
+          return
+        end
       end
 
       scheduled = schedule_next_if_active!(current, scan_id)
@@ -229,6 +249,15 @@ module ::DisifyEmailProtection
       Jobs.enqueue_in(delay, :disify_existing_user_scan, { scan_id: scan_id }) if scheduled
     end
 
+    def provider_rate_limit_nearly_exhausted?
+      health = Health.stored_health
+      limit = Integer(health["rate_limit_limit"], exception: false)
+      remaining = Integer(health["rate_limit_remaining"], exception: false)
+      limit.present? && limit.positive? && remaining.present? && remaining <= PROVIDER_RATE_LIMIT_RESERVE
+    rescue StandardError
+      false
+    end
+
     def risky_result?(result)
       %w[disposable no_mx role].include?(result.reason.to_s) || result.decision == "block"
     end
@@ -245,6 +274,22 @@ module ::DisifyEmailProtection
     def still_active?(scan_id)
       latest = raw_state
       latest["scan_id"] == scan_id && ACTIVE_STATUSES.include?(latest["status"])
+    end
+
+    def checkpoint_progress_if_active!(current, scan_id)
+      with_state_lock do
+        latest = raw_state
+        next false unless latest["scan_id"] == scan_id && ACTIVE_STATUSES.include?(latest["status"])
+
+        now = Time.zone.now.iso8601
+        latest["cursor"] = [latest["cursor"].to_i, current["cursor"].to_i].max
+        latest["processed"] = [latest["processed"].to_i, current["processed"].to_i].max
+        latest["flagged"] = [latest["flagged"].to_i, current["flagged"].to_i].max
+        latest["last_activity_at"] = now
+        store(latest)
+        current["last_activity_at"] = now
+        true
+      end
     end
 
     def complete_if_active!(current, scan_id)
@@ -320,7 +365,11 @@ module ::DisifyEmailProtection
     end
 
     def normalize_request_id(value)
-      value.to_s.strip.first(128).presence
+      raw = value.to_s.strip
+      return nil if raw.blank?
+      raise Discourse::InvalidParameters.new(:request_id) unless REQUEST_ID_PATTERN.match?(raw)
+
+      raw
     end
 
     def parse_time(value)

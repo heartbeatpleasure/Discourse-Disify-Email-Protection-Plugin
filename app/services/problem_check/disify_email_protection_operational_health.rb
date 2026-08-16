@@ -35,7 +35,16 @@ class ProblemCheck::DisifyEmailProtectionOperationalHealth < ProblemCheck
     )
   rescue StandardError => e
     Rails.logger.warn("[disify_email_protection] problem check failed class=#{e.class}")
-    no_problem
+    problem(
+      override_data: {
+        status: "Internal error",
+        reason: "Health check failed",
+      },
+      details: {
+        status: "internal_error",
+        reason: e.class.to_s.first(100),
+      },
+    )
   end
 
   private

@@ -9,7 +9,9 @@ module ::DisifyEmailProtection
     KINDS = %w[allow_domain block_domain allow_email_hmac block_email_hmac].freeze
 
     validates :kind, :value, presence: true
-    validates :kind, inclusion: { in: KINDS }
+    validates :kind, inclusion: { in: KINDS }, length: { maximum: 32 }
+    validates :value, length: { maximum: 255 }
+    validates :reason, length: { maximum: 500 }, allow_nil: true
 
     scope :effective, -> {
       where(active: true).where("expires_at IS NULL OR expires_at > ?", Time.zone.now)

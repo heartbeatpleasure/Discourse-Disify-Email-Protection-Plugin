@@ -2,7 +2,7 @@
 
 # name: Discourse-Disify-Email-Protection-Plugin
 # about: Adds disposable-email and deliverability protection to Discourse using DISIFY.
-# version: 0.1.12
+# version: 0.1.13
 # authors: Chris
 
 add_admin_route "admin.disify_email_protection.title", "disifyEmailProtection"
@@ -11,7 +11,7 @@ enabled_site_setting :disify_email_protection_enabled
 
 module ::DisifyEmailProtection
   PLUGIN_NAME = "Discourse-Disify-Email-Protection-Plugin"
-  PLUGIN_VERSION = "0.1.12"
+  PLUGIN_VERSION = "0.1.13"
   API_BASE_URL = "https://disify.com/api"
   STORE_NAMESPACE = "disify_email_protection"
   TRUSTED_ALIAS_DOMAINS = %w[
@@ -49,6 +49,7 @@ after_initialize do
   require_relative "lib/disify_email_protection/policy_exceptions"
   require_relative "lib/disify_email_protection/review_queue"
   require_relative "lib/disify_email_protection/user_note_writer"
+  require_relative "lib/disify_email_protection/staff_audit"
   require_relative "lib/disify_email_protection/decision"
   require_relative "lib/disify_email_protection/existing_user_scan"
   require_relative "lib/disify_email_protection/moderator_digest"

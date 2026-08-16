@@ -213,6 +213,7 @@ nl:
           scan_state_cancelled: "Geannuleerd"
           scan_error_stale: "Er is langer dan 10 minuten geen scanactiviteit gedetecteerd; de scan is automatisch gepauzeerd."
           scan_error_circuit_open: "DISIFY-aanvragen zijn tijdelijk gepauzeerd door de circuit breaker."
+          scan_error_rate_limit_window: "De scan wacht kort om DISIFY-requestcapaciteit te behouden en gaat daarna automatisch verder."
           scan_status_cancelled: "De laatste scan is geannuleerd. Je kunt een nieuwe scan starten."
           cancel_scan_dialog_title: "Scan van bestaande gebruikers annuleren?"
           cancel_scan_dialog_message: "De scan wordt veilig gestopt. Een eventueel al ingeplande scantaak stopt zonder verder te gaan, waarna je een nieuwe scan kunt starten."

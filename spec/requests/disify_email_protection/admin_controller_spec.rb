@@ -163,4 +163,51 @@ RSpec.describe DisifyEmailProtection::AdminController do
     end
   end
 
+
+  describe "admin route access-control matrix" do
+    it "denies a normal user across all plugin JSON admin endpoints" do
+      sign_in(user)
+      requests = [
+        [:get, "/admin/plugins/disify-email-protection/overview.json", {}],
+        [:get, "/admin/plugins/disify-email-protection/health.json", {}],
+        [:post, "/admin/plugins/disify-email-protection/health/test.json", {}],
+        [:post, "/admin/plugins/disify-email-protection/health/reset-circuit.json", {}],
+        [:get, "/admin/plugins/disify-email-protection/statistics.json", { period: 7 }],
+        [:get, "/admin/plugins/disify-email-protection/review.json", { state: "pending", page: 1 }],
+        [:post, "/admin/plugins/disify-email-protection/review/1/approve.json", {}],
+        [:post, "/admin/plugins/disify-email-protection/review/1/approve-permanent.json", {}],
+        [:post, "/admin/plugins/disify-email-protection/review/1/reject.json", {}],
+        [:post, "/admin/plugins/disify-email-protection/review/1/recheck.json", {}],
+        [:get, "/admin/plugins/disify-email-protection/tools.json", {}],
+        [:get, "/admin/plugins/disify-email-protection/tools/scan/status.json", {}],
+        [:post, "/admin/plugins/disify-email-protection/tools/check.json", { email: "member@example.com" }],
+        [:post, "/admin/plugins/disify-email-protection/tools/scan.json", { scan_mode: "domain_only" }],
+        [:post, "/admin/plugins/disify-email-protection/tools/scan/resume.json", {}],
+        [:post, "/admin/plugins/disify-email-protection/tools/scan/cancel.json", {}],
+        [:post, "/admin/plugins/disify-email-protection/exceptions.json", { kind: "allow_domain", disify_email_protection_exception_value: "example.com" }],
+        [:delete, "/admin/plugins/disify-email-protection/exceptions/1.json", {}],
+      ]
+
+      requests.each do |method, path, params|
+        public_send(method, path, params: params)
+        expect(response.status).to eq(404).or eq(403), "expected #{method.upcase} #{path} to be admin-only"
+      end
+    end
+  end
+
+  describe "strict admin input validation" do
+    it "rejects malformed record identifiers instead of coercing them to zero" do
+      sign_in(admin)
+      post "/admin/plugins/disify-email-protection/review/not-an-id/approve.json"
+      expect(response.status).to eq(400)
+    end
+
+    it "bounds an excessively large review page to the available result set" do
+      sign_in(admin)
+      get "/admin/plugins/disify-email-protection/review.json", params: { state: "pending", page: "999999999999999999999" }
+      expect(response.status).to eq(200)
+      expect(response.parsed_body["page"]).to be >= 1
+    end
+  end
+
 end

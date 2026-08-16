@@ -213,6 +213,7 @@ en:
           scan_state_cancelled: "Cancelled"
           scan_error_stale: "No scan activity was detected for more than 10 minutes; the scan was paused automatically."
           scan_error_circuit_open: "DISIFY requests are temporarily paused by the circuit breaker."
+          scan_error_rate_limit_window: "The scan is waiting briefly to preserve DISIFY request capacity and will continue automatically."
           scan_status_cancelled: "The last scan was cancelled. You can start a new scan."
           cancel_scan_dialog_title: "Cancel existing-user scan?"
           cancel_scan_dialog_message: "The scan will stop safely. Any already queued scan job will exit without continuing, and you can start a new scan afterwards."

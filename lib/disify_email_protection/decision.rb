@@ -69,19 +69,9 @@ module ::DisifyEmailProtection
         )
       end
 
-      unless force_remote || CircuitBreaker.allow_request?
-        return unavailable_decision(
-          normalized,
-          user,
-          flow,
-          mode,
-          "circuit_open",
-          dry_run,
-          nil,
-          source: "circuit",
-        )
-      end
-
+      # Prefer a still-valid local cache entry before consulting the circuit breaker.
+      # This preserves known risky-domain enforcement during a provider outage or
+      # rate-limit window instead of turning every cached result into fail-open.
       cached = nil
       unless force_remote
         if domain_only
@@ -100,6 +90,19 @@ module ::DisifyEmailProtection
         source = "cache"
         telemetry[:cache_hits] = 1
       else
+        unless force_remote || CircuitBreaker.allow_request?
+          return unavailable_decision(
+            normalized,
+            user,
+            flow,
+            mode,
+            "circuit_open",
+            dry_run,
+            nil,
+            source: "circuit",
+          )
+        end
+
         client_result = domain_only ? Client.new.check_domain(domain) : Client.new.check_email(normalized)
         Health.record_result!(client_result, source: flow)
         telemetry = remote_telemetry(client_result)

@@ -9,19 +9,24 @@ module ::DisifyEmailProtection
 
       hmac = Normalizer.email_hmac(email)
       domain = Normalizer.domain(email)
-      scope = ReviewItem.pending.where(email_hmac: hmac, reason: reason.to_s)
-      item = scope.order(id: :desc).first || ReviewItem.new
-      item.user_id = user&.persisted? ? user.id : nil
-      item.email_domain = domain
-      item.email_hmac = hmac
-      item.flow = flow
-      item.reason = reason.to_s
-      item.confidence = confidence
-      item.signals = Array(signals).map(&:to_s).first(20)
-      item.state = "pending"
-      item.metadata = metadata.to_h.slice("source", "scan_id")
-      item.save!
-      item
+      return nil if hmac.blank? || domain.blank?
+
+      mutex_key = "disify-email-protection-review-#{hmac.first(32)}-#{reason.to_s.first(32)}"
+      DistributedMutex.synchronize(mutex_key, validity: 10) do
+        scope = ReviewItem.pending.where(email_hmac: hmac, reason: reason.to_s)
+        item = scope.order(id: :desc).first || ReviewItem.new
+        item.user_id = user&.persisted? ? user.id : nil
+        item.email_domain = domain
+        item.email_hmac = hmac
+        item.flow = flow.to_s.first(32)
+        item.reason = reason.to_s.first(32)
+        item.confidence = confidence
+        item.signals = Array(signals).filter_map { |signal| signal.to_s.strip.first(64).presence }.first(20)
+        item.state = "pending"
+        item.metadata = metadata.to_h.deep_stringify_keys.slice("source", "scan_id")
+        item.save!
+        item
+      end
     rescue StandardError => e
       Rails.logger.warn("[disify_email_protection] review item failed class=#{e.class}")
       nil
@@ -48,6 +53,7 @@ module ::DisifyEmailProtection
     end
 
     def reject!(item, actor)
+      ensure_admin_actor!(actor)
       item.with_lock do
         raise Discourse::InvalidParameters.new(:review) unless item.state == "pending"
 
@@ -65,6 +71,7 @@ module ::DisifyEmailProtection
     end
 
     def approve_with_policy!(item, actor, expires_at:, resolution:, reason:)
+      ensure_admin_actor!(actor)
       item.with_lock do
         raise Discourse::InvalidParameters.new(:review) unless item.state == "pending"
         raise Discourse::InvalidParameters.new(:email_hmac) if item.email_hmac.blank?
@@ -78,6 +85,10 @@ module ::DisifyEmailProtection
         )
         resolve!(item, "approved", actor, resolution: resolution)
       end
+    end
+
+    def ensure_admin_actor!(actor)
+      raise Discourse::InvalidAccess unless actor&.admin?
     end
 
     def resolve!(item, state, actor, resolution: nil)

@@ -29,6 +29,7 @@ module ::DisifyEmailProtection
     def reset_circuit
       rate_limit_admin_action!("reset-circuit", 10)
       CircuitBreaker.reset!
+      StaffAudit.log!(actor: current_user, action: "circuit_reset")
       render_json_dump(success: true, circuit_breaker: CircuitBreaker.state)
     end
 
@@ -39,11 +40,18 @@ module ::DisifyEmailProtection
     end
 
     def review
-      page = [params[:page].to_i, 1].max
+      requested_page = positive_integer_value(params[:page]) || 1
       per_page = 50
+      state = params[:state].to_s
+      if state.present? && !ReviewItem::STATES.include?(state)
+        raise Discourse::InvalidParameters.new(:state)
+      end
+
       scope = ReviewItem.includes(:user, :resolved_by).order(id: :desc)
-      scope = scope.where(state: params[:state]) if ReviewItem::STATES.include?(params[:state].to_s)
+      scope = scope.where(state: state) if state.present?
       total = scope.count
+      max_page = [(total.to_f / per_page).ceil, 1].max
+      page = [requested_page, max_page].min
       items = scope.offset((page - 1) * per_page).limit(per_page)
 
       render_json_dump(
@@ -56,8 +64,9 @@ module ::DisifyEmailProtection
 
     def approve_review
       rate_limit_admin_action!("review-approve")
-      item = ReviewItem.find(params[:id].to_i)
+      item = ReviewItem.find(positive_integer_param!(:id))
       ReviewQueue.approve!(item, current_user)
+      StaffAudit.log!(actor: current_user, action: "review_approved", details: { review_id: item.id, resolution: "allow_7_days" })
       UserNoteWriter.record!(
         user: item.user,
         reason: item.reason,
@@ -70,8 +79,9 @@ module ::DisifyEmailProtection
 
     def approve_review_permanently
       rate_limit_admin_action!("review-approve-permanent")
-      item = ReviewItem.find(params[:id].to_i)
+      item = ReviewItem.find(positive_integer_param!(:id))
       ReviewQueue.approve_permanently!(item, current_user)
+      StaffAudit.log!(actor: current_user, action: "review_approved_permanently", details: { review_id: item.id, resolution: "allow_permanent" })
       UserNoteWriter.record!(
         user: item.user,
         reason: item.reason,
@@ -84,8 +94,9 @@ module ::DisifyEmailProtection
 
     def reject_review
       rate_limit_admin_action!("review-reject")
-      item = ReviewItem.find(params[:id].to_i)
+      item = ReviewItem.find(positive_integer_param!(:id))
       ReviewQueue.reject!(item, current_user)
+      StaffAudit.log!(actor: current_user, action: "review_rejected", details: { review_id: item.id, resolution: "block_30_days" })
       UserNoteWriter.record!(
         user: item.user,
         reason: item.reason,
@@ -98,7 +109,7 @@ module ::DisifyEmailProtection
 
     def recheck_review
       rate_limit_admin_action!("review-recheck")
-      item = ReviewItem.includes(:user).find(params[:id].to_i)
+      item = ReviewItem.includes(:user).find(positive_integer_param!(:id))
       raise Discourse::InvalidParameters.new(:review) if item.user.blank? || item.user.email.blank?
 
       result = Decision.evaluate(
@@ -134,7 +145,9 @@ module ::DisifyEmailProtection
     def manual_check
       rate_limit_admin_action!("manual-check", 20)
       email = params.require(:email).to_s.strip
-      raise Discourse::InvalidParameters.new(:email) unless EmailAddressValidator.valid_value?(email)
+      if email.bytesize > 320 || !EmailAddressValidator.valid_value?(email)
+        raise Discourse::InvalidParameters.new(:email)
+      end
 
       result = Decision.evaluate(
         email: email,
@@ -158,24 +171,39 @@ module ::DisifyEmailProtection
 
     def start_scan
       rate_limit_admin_action!("start-scan", 5)
-      render_json_dump(
-        success: true,
-        scan: ExistingUserScan.start!(
-          actor: current_user,
-          scan_mode: params[:scan_mode],
-          request_id: params[:request_id],
-        ),
+      scan = ExistingUserScan.start!(
+        actor: current_user,
+        scan_mode: params[:scan_mode],
+        request_id: params[:request_id],
       )
+      StaffAudit.log!(
+        actor: current_user,
+        action: "scan_started",
+        details: { scan_id: scan["scan_id"], scan_mode: scan["mode"], scan_status: scan["status"] },
+      )
+      render_json_dump(success: true, scan: scan)
     end
 
     def resume_scan
       rate_limit_admin_action!("resume-scan", 5)
-      render_json_dump(success: true, scan: ExistingUserScan.resume!(actor: current_user))
+      scan = ExistingUserScan.resume!(actor: current_user)
+      StaffAudit.log!(
+        actor: current_user,
+        action: "scan_resumed",
+        details: { scan_id: scan["scan_id"], scan_mode: scan["mode"], scan_status: scan["status"] },
+      )
+      render_json_dump(success: true, scan: scan)
     end
 
     def cancel_scan
       rate_limit_admin_action!("cancel-scan", 5)
-      render_json_dump(success: true, scan: ExistingUserScan.cancel!(actor: current_user))
+      scan = ExistingUserScan.cancel!(actor: current_user)
+      StaffAudit.log!(
+        actor: current_user,
+        action: "scan_cancelled",
+        details: { scan_id: scan["scan_id"], scan_mode: scan["mode"], scan_status: scan["status"] },
+      )
+      render_json_dump(success: true, scan: scan)
     end
 
     def create_exception
@@ -201,20 +229,43 @@ module ::DisifyEmailProtection
           raise Discourse::InvalidParameters.new(:kind)
         end
 
+      StaffAudit.log!(
+        actor: current_user,
+        action: "policy_exception_created",
+        details: { exception_id: item.id, exception_kind: item.kind },
+      )
       render_json_dump(success: true, exception: serialize_exception(item))
     end
 
     def delete_exception
       rate_limit_admin_action!("delete-exception")
-      item = PolicyException.find(params[:id].to_i)
+      item = PolicyException.find(positive_integer_param!(:id))
       item.update!(active: false)
+      StaffAudit.log!(
+        actor: current_user,
+        action: "policy_exception_deleted",
+        details: { exception_id: item.id, exception_kind: item.kind },
+      )
       render_json_dump(success: true)
     end
 
     private
 
     def disable_response_caching
-      response.headers["Cache-Control"] = "no-store"
+      response.headers["Cache-Control"] = "no-store, private"
+      response.headers["Pragma"] = "no-cache"
+    end
+
+    def positive_integer_param!(name)
+      value = positive_integer_value(params[name])
+      raise Discourse::InvalidParameters.new(name) unless value
+
+      value
+    end
+
+    def positive_integer_value(value)
+      integer = Integer(value, exception: false)
+      integer&.positive? ? integer : nil
     end
 
     def rate_limit_admin_action!(suffix, limit = ADMIN_ACTION_RATE_LIMIT)

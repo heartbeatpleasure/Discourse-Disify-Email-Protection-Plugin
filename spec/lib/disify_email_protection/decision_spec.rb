@@ -73,4 +73,34 @@ RSpec.describe DisifyEmailProtection::Decision do
       expect(described_class.apply_mode("block", "enforce")).to eq("block")
     end
   end
+
+  describe ".evaluate during provider backoff" do
+    it "still applies a cached risky-domain result while the circuit is open" do
+      SiteSetting.disify_email_protection_enabled = true
+      SiteSetting.disify_email_protection_mode = "enforce"
+      cached = {
+        "result" => {
+          "format" => true,
+          "dns" => true,
+          "disposable" => true,
+          "confidence" => 100,
+          "signals" => ["blacklist_exact"],
+        },
+      }
+      allow(DisifyEmailProtection::Cache).to receive(:fetch_email).and_return(nil)
+      allow(DisifyEmailProtection::Cache).to receive(:fetch_risky_domain).and_return(cached)
+      allow(DisifyEmailProtection::CircuitBreaker).to receive(:allow_request?).and_return(false)
+      expect(DisifyEmailProtection::Client).not_to receive(:new)
+
+      result = described_class.evaluate(
+        email: "member@example.com",
+        dry_run: true,
+      )
+
+      expect(result.decision).to eq("block")
+      expect(result.reason).to eq("disposable")
+      expect(result.source).to eq("cache")
+    end
+  end
+
 end

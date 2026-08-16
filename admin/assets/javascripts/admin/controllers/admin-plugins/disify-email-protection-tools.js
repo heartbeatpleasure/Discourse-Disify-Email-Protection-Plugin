@@ -95,6 +95,9 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
     if (value === "circuit_open") {
       return i18n("admin.disify_email_protection.tools.scan_error_circuit_open");
     }
+    if (value === "rate_limit_window") {
+      return i18n("admin.disify_email_protection.tools.scan_error_rate_limit_window");
+    }
     return value;
   }
 

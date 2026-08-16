@@ -291,6 +291,7 @@ export default RouteTemplate(
           <p class="dep-stats__muted">{{i18n "admin.disify_email_protection.statistics.description"}}</p>
         </div>
         <div class="dep-stats__actions">
+          <button class="btn" type="button" {{on "click" @controller.loadStatistics}} disabled={{@controller.isLoading}}>{{i18n "admin.disify_email_protection.statistics.refresh"}}</button>
           <a class="btn" href={{overviewUrl}}>{{i18n "admin.disify_email_protection.statistics.back"}}</a>
         </div>
       </section>
@@ -383,6 +384,7 @@ export default RouteTemplate(
                         <div class="dep-stats__daily-metric"><div class="dep-stats__daily-metric-label">{{i18n "admin.disify_email_protection.statistics.col_allowed"}}</div><div class="dep-stats__daily-metric-value">{{day.allowed}}</div></div>
                         <div class="dep-stats__daily-metric"><div class="dep-stats__daily-metric-label">{{i18n "admin.disify_email_protection.statistics.metric_monitored"}}</div><div class="dep-stats__daily-metric-value">{{day.monitored}}</div></div>
                         <div class="dep-stats__daily-metric"><div class="dep-stats__daily-metric-label">{{i18n "admin.disify_email_protection.statistics.metric_reviewed"}}</div><div class="dep-stats__daily-metric-value">{{day.reviewed}}</div></div>
+                        <div class="dep-stats__daily-metric"><div class="dep-stats__daily-metric-label">{{i18n "admin.disify_email_protection.statistics.metric_bypassed"}}</div><div class="dep-stats__daily-metric-value">{{day.bypassed}}</div></div>
                       </div>
                     </section>
 
@@ -391,6 +393,7 @@ export default RouteTemplate(
                       <div class="dep-stats__daily-metrics">
                         <div class="dep-stats__daily-metric"><div class="dep-stats__daily-metric-label">{{i18n "admin.disify_email_protection.statistics.metric_blocked_disposable"}}</div><div class="dep-stats__daily-metric-value">{{day.blocked_disposable}}</div></div>
                         <div class="dep-stats__daily-metric"><div class="dep-stats__daily-metric-label">{{i18n "admin.disify_email_protection.statistics.metric_blocked_no_mx"}}</div><div class="dep-stats__daily-metric-value">{{day.blocked_no_mx}}</div></div>
+                        <div class="dep-stats__daily-metric"><div class="dep-stats__daily-metric-label">{{i18n "admin.disify_email_protection.statistics.metric_blocked_other"}}</div><div class="dep-stats__daily-metric-value">{{day.blocked_other}}</div></div>
                         <div class="dep-stats__daily-metric"><div class="dep-stats__daily-metric-label">{{i18n "admin.disify_email_protection.statistics.metric_fail_open"}}</div><div class="dep-stats__daily-metric-value">{{day.fail_open}}</div></div>
                       </div>
                     </section>
@@ -400,6 +403,7 @@ export default RouteTemplate(
                       <div class="dep-stats__daily-metrics">
                         <div class="dep-stats__daily-metric"><div class="dep-stats__daily-metric-label">{{i18n "admin.disify_email_protection.statistics.metric_api_calls"}}</div><div class="dep-stats__daily-metric-value">{{day.api_calls}}</div></div>
                         <div class="dep-stats__daily-metric"><div class="dep-stats__daily-metric-label">{{i18n "admin.disify_email_protection.statistics.metric_cache_hits"}}</div><div class="dep-stats__daily-metric-value">{{day.cache_hits}}</div></div>
+                        <div class="dep-stats__daily-metric"><div class="dep-stats__daily-metric-label">{{i18n "admin.disify_email_protection.statistics.metric_api_errors"}}</div><div class="dep-stats__daily-metric-value">{{day.api_errors}}</div></div>
                         <div class="dep-stats__daily-metric"><div class="dep-stats__daily-metric-label">{{i18n "admin.disify_email_protection.statistics.col_average_latency"}}</div><div class="dep-stats__daily-metric-value">{{day.average_latency_display}}</div></div>
                       </div>
                     </section>

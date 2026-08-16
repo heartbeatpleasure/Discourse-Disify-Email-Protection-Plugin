@@ -103,4 +103,38 @@ RSpec.describe DisifyEmailProtection::Decision do
     end
   end
 
+  describe ".evaluate statistics for admin dry runs" do
+    it "records aggregate statistics without creating normal event side effects" do
+      SiteSetting.disify_email_protection_enabled = true
+      SiteSetting.disify_email_protection_mode = "monitor"
+
+      cached = {
+        "result" => {
+          "format" => true,
+          "dns" => true,
+          "disposable" => false,
+          "confidence" => 0,
+          "signals" => [],
+        },
+      }
+      allow(DisifyEmailProtection::PolicyExceptions).to receive(:decision_for).and_return(nil)
+      allow(DisifyEmailProtection::Cache).to receive(:fetch_email).and_return(cached)
+      allow(DisifyEmailProtection::Cache).to receive(:fetch_risky_domain).and_return(nil)
+      expect(DisifyEmailProtection::EventRecorder).not_to receive(:record!)
+      expect(DisifyEmailProtection::ReviewQueue).not_to receive(:create_or_refresh!)
+      expect(DisifyEmailProtection::Statistics).to receive(:increment!).with(
+        hash_including(checked: 1, allowed: 1, cache_hits: 1),
+      )
+
+      result = described_class.evaluate(
+        email: "member@example.com",
+        flow: "admin_tool",
+        dry_run: true,
+      )
+
+      expect(result.decision).to eq("allow")
+      expect(result.source).to eq("cache")
+    end
+  end
+
 end

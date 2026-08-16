@@ -264,9 +264,14 @@ export default class AdminPluginsDisifyEmailProtectionToolsController extends Co
         exceptions: (data?.exceptions || []).map((item) => ({
           ...item,
           kind_label: exceptionKindLabel(item.kind),
+          target_display: item.kind?.endsWith("email_hmac")
+            ? i18n("admin.disify_email_protection.tools.exception_email_fingerprint", {
+                value: item.value,
+              })
+            : item.value,
           expires_at_display: item.expires_at
             ? formatDisifyDate(item.expires_at)
-            : i18n("admin.disify_email_protection.tools.exception_never_expires"),
+            : null,
           created_at_display: formatDisifyDate(item.created_at),
           created_by_url: item.created_by?.username
             ? getURL(`/u/${encodeURIComponent(item.created_by.username)}`)

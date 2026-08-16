@@ -20,8 +20,11 @@ en:
     disify_email_protection_event_retention_days: "Days to retain normalized plugin events. Raw email addresses are not stored."
     disify_email_protection_stats_retention_days: "Days to retain aggregate daily statistics."
     disify_email_protection_review_queue_enabled: "Create admin review items when policy returns a review decision or an existing-user scan finds risk."
+    disify_email_protection_review_queue_notification_enabled: "Send one grouped Discourse private-message reminder while the email-protection review queue contains pending items, no more often than the configured interval. Individual queue items never create separate messages. Disabled by default."
+    disify_email_protection_review_queue_notification_recipients: "Who receives grouped review-queue reminders: admins only, or staff (admins and moderators together). Moderators are not offered as the sole recipient because the review queue remains admin-only."
+    disify_email_protection_review_queue_notification_interval_days: "Minimum number of days between grouped review-queue reminders while pending items remain. The scheduled check runs daily; default is 30 days."
     disify_email_protection_user_notes_enabled: "Add selected staff notes for existing-user risk events when Discourse User Notes is enabled."
-    disify_email_protection_moderator_digest_enabled: "Send a daily private-message summary when meaningful email-risk activity exists."
+    disify_email_protection_moderator_digest_enabled: "Send a daily private-message summary when meaningful email-risk activity exists. This is separate from the grouped review-queue reminder."
     disify_email_protection_moderator_digest_group: "Group that receives the optional daily email-risk summary."
     disify_email_protection_manual_scan_enabled: "Allow admins to launch a manual scan of existing users."
     disify_email_protection_manual_scan_full_email_mode: "Data mode for manual existing-user scans."
@@ -32,6 +35,22 @@ en:
       disify_email_protection_operational_health: "Disposable Email Protection is degraded (%{status}; %{reason}). <a href='%{base_path}/admin/plugins/disify-email-protection-health'>Open Email Protection Health</a>."
 
   disify_email_protection:
+    review_queue_notification:
+      title: "Email protection review queue reminder"
+      body:
+        one: |
+          There is currently **%{count}** pending item in the Email Protection review queue.
+
+          This is a grouped reminder; individual findings do not generate separate messages.
+
+          Administrators can [open the review queue](/admin/plugins/disify-email-protection-review)
+        other: |
+          There are currently **%{count}** pending items in the Email Protection review queue.
+
+          This is a grouped reminder; individual findings do not generate separate messages.
+
+          Administrators can [open the review queue](/admin/plugins/disify-email-protection-review)
+
     errors:
       disposable_email: "cannot be used for registration. Please use a regular email address that you can keep access to."
       no_mx: "uses a domain that cannot receive email. Please check the address or use another email address."

@@ -23,7 +23,10 @@ module ::DisifyEmailProtection
       reviewed = events.where(decision: "review").count
       failures = events.where(disify_status: "unavailable").count
 
-      return false if pending.zero? && blocked < 10 && failures.zero? && reviewed.zero?
+      # Pending items alone are handled by the configurable review-queue reminder.
+      # The daily digest should represent new/recent activity, not repeat the same
+      # unresolved queue state every day.
+      return false if blocked < 10 && failures.zero? && reviewed.zero?
 
       title = "Email risk protection summary"
       raw = <<~MD

@@ -104,27 +104,51 @@ export default RouteTemplate(
         margin-top: .85rem;
       }
       .dep-tools__exception-card {
-        display: grid;
-        grid-template-columns: minmax(11rem, 1.1fr) minmax(13rem, 1.3fr) minmax(12rem, 1fr) auto;
-        gap: .7rem;
-        align-items: end;
+        display: flex;
+        flex-direction: column;
+        gap: .75rem;
         min-width: 0;
-        padding: .8rem;
+        padding: .9rem;
         border: 1px solid var(--dep-border);
         border-radius: 12px;
         background: var(--dep-surface-alt);
       }
+      .dep-tools__exception-primary {
+        display: grid;
+        grid-template-columns: minmax(11rem, .8fr) minmax(16rem, 1.7fr);
+        gap: .8rem 1.25rem;
+        min-width: 0;
+      }
       .dep-tools__exception-field { min-width: 0; }
       .dep-tools__exception-meta {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: .45rem .7rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: .4rem 1.4rem;
+        align-items: baseline;
+        padding-top: .7rem;
+        border-top: 1px solid var(--dep-border);
+      }
+      .dep-tools__exception-meta-item {
+        display: inline-flex;
+        min-width: 0;
+        align-items: baseline;
+        gap: .35rem;
+      }
+      .dep-tools__exception-meta-item .dep-tools__label { white-space: nowrap; }
+      .dep-tools__exception-meta-item .dep-tools__value { margin-top: 0; white-space: nowrap; }
+      .dep-tools__exception-reason {
+        min-width: 0;
+        padding-top: .7rem;
+        border-top: 1px solid var(--dep-border);
+      }
+      .dep-tools__exception-actions {
+        display: flex;
+        justify-content: flex-end;
       }
       .dep-tools__exception-card a { color: var(--tertiary); }
       .dep-tools__exception-card .btn { white-space: nowrap; }
       @media (max-width: 1100px) {
         .dep-tools__form--three { grid-template-columns: minmax(13rem, 1fr) minmax(20rem, 1.7fr); }
-        .dep-tools__exception-card { grid-template-columns: 1fr 1fr; align-items: start; }
       }
       @media (max-width: 980px) {
         .dep-tools__form--scan { grid-template-columns: 1fr; }
@@ -137,7 +161,9 @@ export default RouteTemplate(
         .dep-tools__actions { align-self: flex-end; flex-wrap: wrap; margin-left: 0; }
       }
       @media (max-width: 700px) {
-        .dep-tools__form, .dep-tools__form--scan, .dep-tools__form--three, .dep-tools__grid, .dep-tools__exception-card, .dep-tools__exception-meta { grid-template-columns: 1fr; }
+        .dep-tools__form, .dep-tools__form--scan, .dep-tools__form--three, .dep-tools__grid, .dep-tools__exception-primary { grid-template-columns: 1fr; }
+        .dep-tools__exception-meta { align-items: flex-start; }
+        .dep-tools__exception-meta-item { flex: 1 1 100%; }
         .dep-tools__scan-actions { align-items: stretch; }
         .dep-tools__scan-actions .btn { flex: 1 1 auto; }
       }
@@ -226,40 +252,47 @@ export default RouteTemplate(
           <div class="dep-tools__exception-list">
             {{#each @controller.data.exceptions as |item|}}
               <article class="dep-tools__exception-card">
-                <div class="dep-tools__exception-field">
-                  <div class="dep-tools__label">{{i18n "admin.disify_email_protection.tools.exceptions_table_type"}}</div>
-                  <div class="dep-tools__value">{{item.kind_label}}</div>
-                </div>
-                <div class="dep-tools__exception-field">
-                  <div class="dep-tools__label">{{i18n "admin.disify_email_protection.tools.exceptions_table_value"}}</div>
-                  <div class="dep-tools__value">{{item.value}}</div>
-                </div>
-                <div class="dep-tools__exception-meta">
+                <div class="dep-tools__exception-primary">
                   <div class="dep-tools__exception-field">
-                    <div class="dep-tools__label">{{i18n "admin.disify_email_protection.tools.exceptions_table_expires"}}</div>
-                    <div class="dep-tools__value">{{item.expires_at_display}}</div>
+                    <div class="dep-tools__label">{{i18n "admin.disify_email_protection.tools.exceptions_table_type"}}</div>
+                    <div class="dep-tools__value">{{item.kind_label}}</div>
                   </div>
                   <div class="dep-tools__exception-field">
-                    <div class="dep-tools__label">{{i18n "admin.disify_email_protection.tools.exception_created_by"}}</div>
-                    <div class="dep-tools__value">
+                    <div class="dep-tools__label">{{i18n "admin.disify_email_protection.tools.exceptions_table_value"}}</div>
+                    <div class="dep-tools__value">{{item.target_display}}</div>
+                  </div>
+                </div>
+
+                <div class="dep-tools__exception-meta">
+                  <div class="dep-tools__exception-meta-item">
+                    <span class="dep-tools__label">{{i18n "admin.disify_email_protection.tools.exception_created_at"}}:</span>
+                    <span class="dep-tools__value">{{item.created_at_display}}</span>
+                  </div>
+                  <div class="dep-tools__exception-meta-item">
+                    <span class="dep-tools__label">{{i18n "admin.disify_email_protection.tools.exception_created_by"}}:</span>
+                    <span class="dep-tools__value">
                       {{#if item.created_by}}
                         <a href={{item.created_by_url}}>{{item.created_by.username}}</a>
                       {{else}}
                         —
                       {{/if}}
+                    </span>
+                  </div>
+                  {{#if item.expires_at_display}}
+                    <div class="dep-tools__exception-meta-item">
+                      <span class="dep-tools__label">{{i18n "admin.disify_email_protection.tools.exceptions_table_expires"}}:</span>
+                      <span class="dep-tools__value">{{item.expires_at_display}}</span>
                     </div>
-                  </div>
-                  <div class="dep-tools__exception-field">
-                    <div class="dep-tools__label">{{i18n "admin.disify_email_protection.tools.exception_created_at"}}</div>
-                    <div class="dep-tools__value">{{item.created_at_display}}</div>
-                  </div>
+                  {{/if}}
                 </div>
-                <div class="dep-tools__exception-field">
+
+                <div class="dep-tools__exception-reason">
                   <div class="dep-tools__label">{{i18n "admin.disify_email_protection.tools.exceptions_table_reason"}}</div>
                   <div class="dep-tools__value">{{#if item.reason}}{{item.reason}}{{else}}—{{/if}}</div>
-                  <div style="margin-top:.65rem;">
-                    <button class="btn btn-small btn-danger" type="button" {{on "click" (fn @controller.deleteException item)}}>{{i18n "admin.disify_email_protection.tools.delete_exception"}}</button>
-                  </div>
+                </div>
+
+                <div class="dep-tools__exception-actions">
+                  <button class="btn btn-small btn-danger" type="button" {{on "click" (fn @controller.deleteException item)}}>{{i18n "admin.disify_email_protection.tools.delete_exception"}}</button>
                 </div>
               </article>
             {{/each}}

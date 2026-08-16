@@ -261,6 +261,41 @@ module ::DisifyEmailProtection
       message_key = nil,
       telemetry: {}
     )
+      # Aggregate operational statistics cover every real validation evaluation,
+      # including admin dry-run checks, review rechecks and existing-user scans.
+      # `dry_run` continues to suppress user-facing/policy side effects only.
+      counters = {
+        checked: 1,
+        allowed: 0,
+        monitored: 0,
+        reviewed: 0,
+        blocked_disposable: 0,
+        blocked_no_mx: 0,
+        blocked_other: 0,
+        fail_open: 0,
+        bypassed: 0,
+        api_errors: 0,
+      }.merge(telemetry.symbolize_keys)
+
+      case decision
+      when "allow" then counters[:allowed] = 1
+      when "monitor" then counters[:monitored] = 1
+      when "review" then counters[:reviewed] = 1
+      when "fail_open" then counters[:fail_open] = 1
+      when "bypass" then counters[:bypassed] = 1
+      when "block"
+        if reason == "disposable"
+          counters[:blocked_disposable] = 1
+        elsif reason == "no_mx"
+          counters[:blocked_no_mx] = 1
+        else
+          counters[:blocked_other] = 1
+        end
+      end
+
+      counters[:api_errors] = 1 if status == "unavailable" && counters[:api_calls].to_i.positive?
+      Statistics.increment!(counters)
+
       unless dry_run
         EventRecorder.record!(
           email: email,
@@ -275,38 +310,6 @@ module ::DisifyEmailProtection
           latency_ms: latency_ms,
           source: source,
         )
-
-        counters = {
-          checked: 1,
-          allowed: 0,
-          monitored: 0,
-          reviewed: 0,
-          blocked_disposable: 0,
-          blocked_no_mx: 0,
-          blocked_other: 0,
-          fail_open: 0,
-          bypassed: 0,
-          api_errors: 0,
-        }.merge(telemetry.symbolize_keys)
-
-        case decision
-        when "allow" then counters[:allowed] = 1
-        when "monitor" then counters[:monitored] = 1
-        when "review" then counters[:reviewed] = 1
-        when "fail_open" then counters[:fail_open] = 1
-        when "bypass" then counters[:bypassed] = 1
-        when "block"
-          if reason == "disposable"
-            counters[:blocked_disposable] = 1
-          elsif reason == "no_mx"
-            counters[:blocked_no_mx] = 1
-          else
-            counters[:blocked_other] = 1
-          end
-        end
-
-        counters[:api_errors] = 1 if status == "unavailable" && counters[:api_calls].to_i.positive?
-        Statistics.increment!(counters)
 
         if decision == "review" && user&.persisted?
           ReviewQueue.create_or_refresh!(

@@ -6,6 +6,7 @@ module Jobs
 
     def execute(_args)
       ::DisifyEmailProtection::ModeratorDigest.send_if_needed!
+      ::DisifyEmailProtection::ReviewQueueNotifier.send_if_needed!
     end
   end
 end

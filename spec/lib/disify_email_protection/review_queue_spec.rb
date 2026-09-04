@@ -89,6 +89,30 @@ RSpec.describe DisifyEmailProtection::ReviewQueue do
     end
   end
 
+
+
+  it "refuses to recreate a fingerprint after the linked user has been anonymized" do
+    user.primary_email.update_columns(
+      email: "anon#{user.id}@anonymized.invalid",
+      normalized_email: "anon#{user.id}@anonymized.invalid",
+    )
+
+    result =
+      described_class.create_or_refresh_from_fingerprint!(
+        email_hmac: DisifyEmailProtection::Normalizer.email_hmac(email),
+        email_domain: "example.com",
+        user: user,
+        flow: "email_change",
+        reason: "disposable",
+        confidence: 100,
+        signals: [],
+        metadata: {},
+      )
+
+    expect(result).to be_nil
+    expect(DisifyEmailProtection::ReviewItem.where(user_id: user.id)).to be_empty
+  end
+
   it "rejects review decisions from non-admin actors" do
     item = build_review_item
     expect { described_class.approve!(item, user) }.to raise_error(Discourse::InvalidAccess)

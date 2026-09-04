@@ -21,6 +21,19 @@ RSpec.describe Jobs::DisifyEmailProtectionRecordValidationResult do
       latency_ms: 25,
       source: "api",
       counters: { checked: 1, blocked_disposable: 1, api_calls: 1 },
+      cache: {
+        email: true,
+        domain: true,
+        result: {
+          format: true,
+          domain: "example.com",
+          disposable: true,
+          dns: true,
+          confidence: 100,
+          signals: ["blacklist_exact"],
+          typo_suggestion: "corrected@example.org",
+        },
+      },
     }
   end
 
@@ -38,6 +51,22 @@ RSpec.describe Jobs::DisifyEmailProtectionRecordValidationResult do
     expect(event.decision).to eq("block")
   end
 
+
+
+  it "materializes the provider cache outside the rolled-back validation transaction without raw suggestions" do
+    described_class.new.execute(base_args)
+
+    email_row =
+      DisifyEmailProtection::EmailCheck.find_by!(
+        cache_key: "email:#{DisifyEmailProtection::Normalizer.email_hmac(email)}",
+      )
+    domain_row = DisifyEmailProtection::EmailCheck.find_by!(cache_key: "domain:example.com")
+    expect(email_row.result["disposable"]).to eq(true)
+    expect(domain_row.result["disposable"]).to eq(true)
+    expect(email_row.result).not_to have_key("typo_suggestion")
+    expect(email_row.result.to_json).not_to include("corrected@example.org")
+  end
+
   it "does not recreate identifying event data for an anonymized user" do
     user.primary_email.update_columns(
       email: "anon#{user.id}@anonymized.invalid",
@@ -47,5 +76,11 @@ RSpec.describe Jobs::DisifyEmailProtectionRecordValidationResult do
     expect do
       described_class.new.execute(base_args)
     end.not_to change { DisifyEmailProtection::EmailEvent.count }
+
+    expect(
+      DisifyEmailProtection::EmailCheck.where(
+        cache_key: "email:#{DisifyEmailProtection::Normalizer.email_hmac(email)}",
+      ),
+    ).to be_empty
   end
 end

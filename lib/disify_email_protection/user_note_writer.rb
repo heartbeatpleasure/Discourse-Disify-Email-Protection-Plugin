@@ -14,15 +14,20 @@ module ::DisifyEmailProtection
       return false unless defined?(::DiscourseUserNotes)
       return false unless SiteSetting.respond_to?(:user_notes_enabled) && SiteSetting.user_notes_enabled
 
-      key = "#{user.id}:#{reason}:#{domain}:#{context}"
-      last = PluginStore.get(NOTE_NAMESPACE, key)
-      return false if recent_timestamp?(last)
+      result =
+        UserLifecycle.with_active_user(user) do |fresh_user|
+          key = "#{fresh_user.id}:#{reason}:#{domain}:#{context}"
+          last = PluginStore.get(NOTE_NAMESPACE, key)
+          next false if recent_timestamp?(last)
 
-      note = "Email risk protection: #{context}. Reason: #{reason}. Domain: #{domain}."
-      note += " Confidence: #{confidence}." if confidence.present?
-      ::DiscourseUserNotes.add_note(user, note, Discourse::SYSTEM_USER_ID)
-      PluginStore.set(NOTE_NAMESPACE, key, Time.zone.now.iso8601)
-      true
+          note = "Email risk protection: #{context}. Reason: #{reason}. Domain: #{domain}."
+          note += " Confidence: #{confidence}." if confidence.present?
+          ::DiscourseUserNotes.add_note(fresh_user, note, Discourse::SYSTEM_USER_ID)
+          PluginStore.set(NOTE_NAMESPACE, key, Time.zone.now.iso8601)
+          true
+        end
+
+      result == true
     rescue StandardError => e
       Rails.logger.warn("[disify_email_protection] user note failed class=#{e.class}")
       false

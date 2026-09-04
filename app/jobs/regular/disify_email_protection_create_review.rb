@@ -9,7 +9,7 @@ module Jobs
       # A queued validation review may run after the account was deleted or
       # anonymized. Never recreate old identifying fingerprints in that case.
       if user_id&.positive?
-        return if user.blank? || ::DisifyEmailProtection::ReviewQueue.anonymized_user?(user)
+        return if user.blank? || ::DisifyEmailProtection::UserLifecycle.anonymized_user?(user)
       end
 
       item =

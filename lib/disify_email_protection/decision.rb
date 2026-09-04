@@ -83,6 +83,7 @@ module ::DisifyEmailProtection
       end
 
       telemetry = {}
+      durable_cache_write = nil
       if cached.present?
         payload = cached["result"].to_h.deep_stringify_keys
         status = "success"
@@ -126,10 +127,15 @@ module ::DisifyEmailProtection
         status = "success"
         latency = client_result.latency_ms
         source = "api"
-        if domain_only || !Normalizer.trusted_alias_domain?(domain)
-          Cache.write_domain(domain, payload)
-        end
-        Cache.write_email(normalized, payload) unless domain_only
+        cache_domain = domain_only || !Normalizer.trusted_alias_domain?(domain)
+        cache_email = !domain_only
+        Cache.write_domain(domain, payload) if cache_domain
+        Cache.write_email(normalized, payload) if cache_email
+        durable_cache_write = {
+          "email" => cache_email,
+          "domain" => cache_domain,
+          "result" => Cache.persistable_result(payload),
+        }
       end
 
       requested_action, reason, message_key = policy_for(payload)
@@ -151,6 +157,7 @@ module ::DisifyEmailProtection
         dry_run,
         message_key,
         telemetry: telemetry,
+        durable_cache_write: durable_cache_write,
       )
     end
 
@@ -259,7 +266,8 @@ module ::DisifyEmailProtection
       payload,
       dry_run,
       message_key = nil,
-      telemetry: {}
+      telemetry: {},
+      durable_cache_write: nil
     )
       if decision == "review"
         if dry_run
@@ -327,6 +335,7 @@ module ::DisifyEmailProtection
             latency_ms: latency_ms,
             source: source,
             counters: counters,
+            durable_cache_write: durable_cache_write,
           )
 
       Statistics.increment!(counters) unless durable_side_effects
@@ -387,7 +396,8 @@ module ::DisifyEmailProtection
       status:,
       latency_ms:,
       source:,
-      counters:
+      counters:,
+      durable_cache_write: nil
     )
       hmac = Normalizer.email_hmac(email)
       domain = Normalizer.domain(email)
@@ -407,6 +417,7 @@ module ::DisifyEmailProtection
         "latency_ms" => latency_ms,
         "source" => source.to_s.first(16),
         "counters" => Statistics::COUNTERS.index_with { |key| [counters[key].to_i, 0].max }.stringify_keys,
+        "cache" => durable_cache_write.to_h.deep_stringify_keys.slice("email", "domain", "result"),
         "current_site_id" => RailsMultisite::ConnectionManagement.current_db,
       }
 

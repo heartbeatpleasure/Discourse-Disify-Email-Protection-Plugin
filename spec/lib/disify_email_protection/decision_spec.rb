@@ -219,6 +219,57 @@ RSpec.describe DisifyEmailProtection::Decision do
       expect(result.decision).to eq("review")
     end
 
+
+
+    it "queues a privacy-safe durable provider cache for a remote review decision" do
+      email = "remote-review@example.com"
+      suggestion = "corrected@example.org"
+      provider_result =
+        DisifyEmailProtection::Client::Result.new(
+          success: true,
+          status: 200,
+          payload: {
+            "format" => true,
+            "domain" => "example.com",
+            "disposable" => true,
+            "dns" => true,
+            "role" => false,
+            "free" => false,
+            "alias" => false,
+            "confidence" => 100,
+            "signals" => ["blacklist_exact"],
+            "typo_suggestion" => suggestion,
+          },
+          latency_ms: 20,
+        )
+      client = instance_double(DisifyEmailProtection::Client)
+      allow(DisifyEmailProtection::Client).to receive(:new).and_return(client)
+      allow(client).to receive(:check_email).with(email).and_return(provider_result)
+      allow(DisifyEmailProtection::Cache).to receive(:fetch_email).and_return(nil)
+      allow(DisifyEmailProtection::Cache).to receive(:fetch_risky_domain).and_return(nil)
+      allow(DisifyEmailProtection::Cache).to receive(:write_email)
+      allow(DisifyEmailProtection::Cache).to receive(:write_domain)
+      allow(DisifyEmailProtection::Health).to receive(:record_result!)
+      allow(DisifyEmailProtection::CircuitBreaker).to receive(:allow_request?).and_return(true)
+      allow(DisifyEmailProtection::CircuitBreaker).to receive(:record_success!)
+      allow(DisifyEmailProtection::ReviewQueue).to receive(:enqueue_create_or_refresh!).and_return(true)
+
+      expect(Jobs::DisifyEmailProtectionRecordValidationResult).to receive(:perform_async) do |payload|
+        expect(payload.dig("cache", "email")).to eq(true)
+        expect(payload.dig("cache", "domain")).to eq(true)
+        expect(payload.dig("cache", "result", "disposable")).to eq(true)
+        expect(payload.dig("cache", "result")).not_to have_key("typo_suggestion")
+        expect(payload.to_json).not_to include(suggestion)
+        expect(payload.to_json).not_to include(email)
+        "jid-remote-cache"
+      end
+
+      result = described_class.evaluate(email: email, user: nil, flow: "signup")
+
+      expect(result.decision).to eq("review")
+      expect(result.payload["typo_suggestion"]).to eq(suggestion)
+    end
+
     it "reports a block in dry-run mode when the review queue is disabled" do
       SiteSetting.disify_email_protection_review_queue_enabled = false
       expect(DisifyEmailProtection::ReviewQueue).not_to receive(:enqueue_create_or_refresh!)

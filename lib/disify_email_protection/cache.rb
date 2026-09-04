@@ -4,6 +4,11 @@ module ::DisifyEmailProtection
   module Cache
     module_function
 
+    EMAIL_HMAC_PATTERN = /\A[0-9a-f]{64}\z/.freeze
+    PERSISTED_RESULT_FIELDS = %w[
+      format domain disposable dns whitelist role free alias confidence signals
+    ].freeze
+
     def fetch_email(email)
       hmac = Normalizer.email_hmac(email)
       return nil if hmac.blank?
@@ -32,8 +37,17 @@ module ::DisifyEmailProtection
       domain = Normalizer.domain(email)
       return if hmac.blank? || domain.blank?
 
+      write_email_fingerprint(email_hmac: hmac, email_domain: domain, result: result)
+    end
+
+    def write_email_fingerprint(email_hmac:, email_domain:, result:)
+      hmac = email_hmac.to_s.downcase
+      domain = email_domain.to_s.downcase
+      return nil unless EMAIL_HMAC_PATTERN.match?(hmac)
+      return nil unless PolicyExceptions.valid_domain?(domain)
+
       ttl = SiteSetting.disify_email_protection_email_hmac_cache_ttl_minutes.to_i.minutes
-      persist("email:#{hmac}", "email", domain, result, ttl)
+      persist("email:#{hmac}", "email", domain, persistable_result(result), ttl)
     end
 
     def write_domain(domain, result)
@@ -41,15 +55,34 @@ module ::DisifyEmailProtection
       return if normalized.blank?
 
       ttl = SiteSetting.disify_email_protection_domain_cache_ttl_hours.to_i.hours
-      stable = result.slice("format", "domain", "disposable", "dns", "whitelist", "free", "confidence", "signals")
+      stable =
+        persistable_result(result).slice(
+          "format",
+          "domain",
+          "disposable",
+          "dns",
+          "whitelist",
+          "free",
+          "confidence",
+          "signals",
+        )
       persist("domain:#{normalized}", "domain", normalized, stable, ttl)
+    end
+
+    # Only provider fields that cannot contain a full email address may be persisted.
+    # `typo_suggestion` remains available in the immediate in-memory/admin result but
+    # is deliberately excluded from plugin tables.
+    def persistable_result(result)
+      result.to_h.deep_stringify_keys.slice(*PERSISTED_RESULT_FIELDS)
     end
 
     def fetch(cache_key)
       row = EmailCheck.where(cache_key: cache_key).where("expires_at > ?", Time.zone.now).first
       return nil if row.blank?
 
-      { "result" => row.result.deep_stringify_keys, "checked_at" => row.checked_at, "source" => "cache" }
+      result = row.result.to_h.deep_stringify_keys
+      result = persistable_result(result) if row.check_type == "email"
+      { "result" => result, "checked_at" => row.checked_at, "source" => "cache" }
     rescue ActiveRecord::StatementInvalid
       nil
     end

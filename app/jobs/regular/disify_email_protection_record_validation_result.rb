@@ -4,21 +4,26 @@ module Jobs
   class DisifyEmailProtectionRecordValidationResult < ::Jobs::Base
     def execute(args)
       user_id = Integer(args[:user_id], exception: false)
-      user = user_id&.positive? ? User.find_by(id: user_id) : nil
-      user_is_stale =
-        user_id&.positive? &&
-          (user.blank? || ::DisifyEmailProtection::ReviewQueue.anonymized_user?(user))
+
+      if user_id&.positive?
+        ::DisifyEmailProtection::UserLifecycle.with_active_user_id(user_id) do |user|
+          persist_identifying_result(args, user)
+        end
+      else
+        persist_identifying_result(args, nil)
+      end
 
       counters =
         ::DisifyEmailProtection::Statistics::COUNTERS.index_with do |key|
           [args.dig(:counters, key).to_i, 0].max
         end
       ::DisifyEmailProtection::Statistics.increment!(counters)
+    end
 
-      # Aggregate statistics contain no user/email identifiers and remain useful
-      # even if the user disappeared before this delayed write. Do not recreate an
-      # identifying event or note after deletion/anonymization, though.
-      return if user_is_stale
+    private
+
+    def persist_identifying_result(args, user)
+      persist_durable_cache(args)
 
       ::DisifyEmailProtection::EventRecorder.record_from_fingerprint!(
         email_hmac: args[:email_hmac],
@@ -42,6 +47,23 @@ module Jobs
           domain: args[:email_domain],
           confidence: args[:confidence],
           context: "email change blocked",
+        )
+      end
+    end
+
+    def persist_durable_cache(args)
+      cache = args[:cache].to_h.deep_stringify_keys
+      result = ::DisifyEmailProtection::Cache.persistable_result(cache["result"])
+      return if result.blank?
+
+      if cache["domain"] == true
+        ::DisifyEmailProtection::Cache.write_domain(args[:email_domain], result)
+      end
+      if cache["email"] == true
+        ::DisifyEmailProtection::Cache.write_email_fingerprint(
+          email_hmac: args[:email_hmac],
+          email_domain: args[:email_domain],
+          result: result,
         )
       end
     end

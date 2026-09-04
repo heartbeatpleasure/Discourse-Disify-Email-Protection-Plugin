@@ -69,30 +69,32 @@ module ::DisifyEmailProtection
       return nil unless EMAIL_HMAC_PATTERN.match?(hmac)
       return nil unless PolicyExceptions.valid_domain?(domain)
 
-      fresh_user = nil
-      if user&.persisted?
-        fresh_user = User.find_by(id: user.id)
-        return nil if fresh_user.blank? || anonymized_user?(fresh_user)
-      end
-
       normalized_reason = reason.to_s.first(32)
       return nil if normalized_reason.blank?
 
-      mutex_key = "disify-email-protection-review-#{hmac.first(32)}-#{normalized_reason.first(32)}"
-      DistributedMutex.synchronize(mutex_key, validity: 10) do
-        scope = ReviewItem.pending.where(email_hmac: hmac, reason: normalized_reason)
-        item = scope.order(id: :desc).first || ReviewItem.new
-        item.user_id = fresh_user&.id
-        item.email_domain = domain
-        item.email_hmac = hmac
-        item.flow = flow.to_s.first(32)
-        item.reason = normalized_reason
-        item.confidence = confidence
-        item.signals = Array(signals).filter_map { |signal| signal.to_s.strip.first(64).presence }.first(20)
-        item.state = "pending"
-        item.metadata = metadata.to_h.deep_stringify_keys.slice("source", "scan_id")
-        item.save!
-        item
+      writer = lambda do |fresh_user|
+        mutex_key = "disify-email-protection-review-#{hmac.first(32)}-#{normalized_reason.first(32)}"
+        DistributedMutex.synchronize(mutex_key, validity: 10) do
+          scope = ReviewItem.pending.where(email_hmac: hmac, reason: normalized_reason)
+          item = scope.order(id: :desc).first || ReviewItem.new
+          item.user_id = fresh_user&.id
+          item.email_domain = domain
+          item.email_hmac = hmac
+          item.flow = flow.to_s.first(32)
+          item.reason = normalized_reason
+          item.confidence = confidence
+          item.signals = Array(signals).filter_map { |signal| signal.to_s.strip.first(64).presence }.first(20)
+          item.state = "pending"
+          item.metadata = metadata.to_h.deep_stringify_keys.slice("source", "scan_id")
+          item.save!
+          item
+        end
+      end
+
+      if user&.persisted?
+        UserLifecycle.with_active_user(user, &writer)
+      else
+        writer.call(nil)
       end
     rescue StandardError => e
       Rails.logger.warn("[disify_email_protection] review item failed class=#{e.class}")
@@ -100,8 +102,7 @@ module ::DisifyEmailProtection
     end
 
     def anonymized_user?(user)
-      suffix = defined?(::UserAnonymizer::EMAIL_SUFFIX) ? ::UserAnonymizer::EMAIL_SUFFIX.to_s : "@anonymized.invalid"
-      user&.email.to_s.end_with?(suffix)
+      UserLifecycle.anonymized_user?(user)
     end
 
     def approve!(item, actor)

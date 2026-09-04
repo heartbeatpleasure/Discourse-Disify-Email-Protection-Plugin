@@ -28,14 +28,19 @@ RSpec.describe DisifyEmailProtection::CircuitBreaker do
   end
 
 
-  it "preserves a protected rate-limit reason when a longer generic window already exists" do
+  it "protects only the actual rate-limit interval inside a longer generic window" do
     longer = described_class.open_for!(10.minutes, "network_error")
     described_class.open_for!(30.seconds, "rate_limited")
 
     expect(described_class.open_until.to_i).to eq(longer.to_i)
     expect(described_class.state[:reason]).to eq("rate_limited")
     expect(described_class.record_success!).to eq(false)
-    expect(described_class.open?).to eq(true)
+
+    Discourse.redis.set(described_class::PROTECTED_UNTIL_KEY, 1.second.ago.to_i)
+
+    expect(described_class.state[:reason]).to eq("network_error")
+    expect(described_class.record_success!).to eq(true)
+    expect(described_class.open?).to eq(false)
   end
 
   it "allows a successful request to clear a non-rate-limit failure" do

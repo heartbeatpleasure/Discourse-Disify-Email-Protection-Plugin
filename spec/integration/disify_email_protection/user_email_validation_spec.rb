@@ -83,6 +83,28 @@ RSpec.describe "DISIFY UserEmail validation" do
     staged_user.valid?
   end
 
+  it "classifies a persisted staged user as staged even when email-change checks are disabled" do
+    staged_user = Fabricate(:user, staged: true, email: "persisted-staged@example.com")
+    SiteSetting.disify_email_protection_check_staged_users = true
+    SiteSetting.disify_email_protection_check_email_changes = false
+
+    result = DisifyEmailProtection::Decision::DecisionResult.new(
+      decision: "allow",
+      reason: "clean",
+      confidence: 0,
+      signals: [],
+      source: "api",
+      status: "success",
+      user_message_key: nil,
+      payload: {},
+    )
+    expect(DisifyEmailProtection::Decision).to receive(:evaluate).with(
+      hash_including(user: staged_user, flow: "staged_user"),
+    ).once.and_return(result)
+
+    staged_user.primary_email.update!(email: "persisted-staged-new@example.com")
+  end
+
   it "preserves an explicit user-level email-validation skip for staged auth flows" do
     SiteSetting.disify_email_protection_check_staged_users = true
     expect(DisifyEmailProtection::Decision).not_to receive(:evaluate)

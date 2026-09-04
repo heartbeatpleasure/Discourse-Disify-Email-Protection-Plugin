@@ -2,7 +2,7 @@
 
 # name: Discourse-Disify-Email-Protection-Plugin
 # about: Adds disposable-email and deliverability protection to Discourse using DISIFY.
-# version: 0.1.18
+# version: 0.1.19
 # authors: Chris
 
 add_admin_route "admin.disify_email_protection.title", "disifyEmailProtection"
@@ -11,7 +11,7 @@ enabled_site_setting :disify_email_protection_enabled
 
 module ::DisifyEmailProtection
   PLUGIN_NAME = "Discourse-Disify-Email-Protection-Plugin"
-  PLUGIN_VERSION = "0.1.18"
+  PLUGIN_VERSION = "0.1.19"
   API_BASE_URL = "https://disify.com/api"
   STORE_NAMESPACE = "disify_email_protection"
   TRUSTED_ALIAS_DOMAINS = %w[
@@ -84,10 +84,14 @@ after_initialize do
       next
     end
 
-    flow = if user_record&.persisted?
-      "email_change"
-    elsif user_record&.staged?
+    # Staged users are real persisted Discourse users. Classify them before
+    # the generic persisted-user/email-change branch so the dedicated staged
+    # setting and telemetry flow remain authoritative for both creation and
+    # later staged-account validation.
+    flow = if user_record&.staged?
       "staged_user"
+    elsif user_record&.persisted?
+      "email_change"
     else
       "signup"
     end

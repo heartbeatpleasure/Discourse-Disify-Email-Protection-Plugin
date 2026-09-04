@@ -72,7 +72,7 @@ en:
           Administrators can [open the review queue](/admin/plugins/disify-email-protection-review)
 
     errors:
-      disposable_email: "cannot be used for registration. Please use a regular email address that you can keep access to."
+      disposable_email: "is a disposable or temporary email address. For security and account-recovery reasons, disposable email addresses are not allowed. Please use a regular email address that you can keep access to."
       no_mx: "uses a domain that cannot receive email. Please check the address or use another email address."
       invalid_format: "is not a valid email address."
       role_email: "cannot be used under the current email policy. Please use a personal email address."

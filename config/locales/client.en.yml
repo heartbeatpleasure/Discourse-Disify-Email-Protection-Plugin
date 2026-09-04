@@ -41,7 +41,7 @@ en:
           label_api_key_configured: "API key configured"
           label_auth_mode: "Auth mode"
           label_fail_open: "Fail-open"
-          info_mode: "Monitor records risk without blocking, Review routes actionable findings into review behavior, and Enforce applies configured blocking rules. The active mode shown here is the current site setting."
+          info_mode: "Monitor records provider risk without blocking, Review routes actionable provider findings into review behavior, and Enforce applies configured provider blocking rules. Explicit local allow/block policy exceptions always take precedence."
           info_auth_mode: "Shows how the server sends the configured DISIFY API key. The credential itself remains server-side and is never displayed here."
           info_fail_open: "When enabled, a temporary DISIFY outage does not block a user solely because the provider is unavailable. The unavailable event is still recorded for operational visibility."
           label_last_check: "Last provider response"

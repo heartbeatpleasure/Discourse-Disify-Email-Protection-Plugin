@@ -74,6 +74,24 @@ RSpec.describe DisifyEmailProtection::Decision do
     end
   end
 
+
+  describe ".evaluate explicit local policy" do
+    it "keeps an explicit block absolute even when provider risk mode is review" do
+      SiteSetting.disify_email_protection_enabled = true
+      SiteSetting.disify_email_protection_mode = "review"
+      allow(DisifyEmailProtection::PolicyExceptions).to receive(:decision_for).and_return("block")
+      allow(DisifyEmailProtection::EventRecorder).to receive(:record!)
+      allow(DisifyEmailProtection::Statistics).to receive(:increment!)
+      allow(Jobs::DisifyEmailProtectionRecordValidationResult).to receive(:perform_async).and_return("jid-policy")
+      expect(DisifyEmailProtection::ReviewQueue).not_to receive(:enqueue_create_or_refresh!)
+
+      result = described_class.evaluate(email: "blocked@example.com")
+
+      expect(result.decision).to eq("block")
+      expect(result.reason).to eq("policy_block")
+    end
+  end
+
   describe ".evaluate during provider backoff" do
     it "still applies a cached risky-domain result while the circuit is open" do
       SiteSetting.disify_email_protection_enabled = true
@@ -121,7 +139,7 @@ RSpec.describe DisifyEmailProtection::Decision do
       allow(DisifyEmailProtection::Cache).to receive(:fetch_email).and_return(cached)
       allow(DisifyEmailProtection::Cache).to receive(:fetch_risky_domain).and_return(nil)
       expect(DisifyEmailProtection::EventRecorder).not_to receive(:record!)
-      expect(DisifyEmailProtection::ReviewQueue).not_to receive(:create_or_refresh!)
+      expect(DisifyEmailProtection::ReviewQueue).not_to receive(:enqueue_create_or_refresh!)
       expect(DisifyEmailProtection::Statistics).to receive(:increment!).with(
         hash_including(checked: 1, allowed: 1, cache_hits: 1),
       )
@@ -160,13 +178,13 @@ RSpec.describe DisifyEmailProtection::Decision do
       allow(DisifyEmailProtection::EventRecorder).to receive(:record!)
       allow(DisifyEmailProtection::Statistics).to receive(:increment!)
       allow(DisifyEmailProtection::UserNoteWriter).to receive(:record!)
+      allow(Jobs::DisifyEmailProtectionRecordValidationResult).to receive(:perform_async).and_return("jid-review")
     end
 
     it "creates a review item for signup before a user record exists" do
-      review_item = instance_double(DisifyEmailProtection::ReviewItem)
-      expect(DisifyEmailProtection::ReviewQueue).to receive(:create_or_refresh!).with(
+      expect(DisifyEmailProtection::ReviewQueue).to receive(:enqueue_create_or_refresh!).with(
         hash_including(email: "new-member@example.com", user: nil, flow: "signup"),
-      ).and_return(review_item)
+      ).and_return(true)
 
       result = described_class.evaluate(email: "new-member@example.com", user: nil, flow: "signup")
 
@@ -174,7 +192,7 @@ RSpec.describe DisifyEmailProtection::Decision do
     end
 
     it "fails closed as a block if a required review item cannot be created" do
-      allow(DisifyEmailProtection::ReviewQueue).to receive(:create_or_refresh!).and_return(nil)
+      allow(DisifyEmailProtection::ReviewQueue).to receive(:enqueue_create_or_refresh!).and_return(false)
 
       result = described_class.evaluate(email: "queue-failure@example.com", user: nil, flow: "signup")
 
@@ -182,9 +200,28 @@ RSpec.describe DisifyEmailProtection::Decision do
       expect(result.reason).to eq("disposable")
     end
 
+    it "queues transaction-safe telemetry without exposing the raw email" do
+      allow(DisifyEmailProtection::ReviewQueue).to receive(:enqueue_create_or_refresh!).and_return(true)
+      email = "transaction-review@example.com"
+      expect(Jobs::DisifyEmailProtectionRecordValidationResult).to receive(:perform_async) do |payload|
+        expect(payload["email_hmac"]).to eq(DisifyEmailProtection::Normalizer.email_hmac(email))
+        expect(payload["email_domain"]).to eq("example.com")
+        expect(payload["decision"]).to eq("review")
+        expect(payload["current_site_id"]).to eq(RailsMultisite::ConnectionManagement.current_db)
+        expect(payload.to_json).not_to include(email)
+        "jid-telemetry"
+      end
+      expect(DisifyEmailProtection::Statistics).not_to receive(:increment!)
+      expect(DisifyEmailProtection::EventRecorder).not_to receive(:record!)
+
+      result = described_class.evaluate(email: email, user: nil, flow: "signup")
+
+      expect(result.decision).to eq("review")
+    end
+
     it "reports a block in dry-run mode when the review queue is disabled" do
       SiteSetting.disify_email_protection_review_queue_enabled = false
-      expect(DisifyEmailProtection::ReviewQueue).not_to receive(:create_or_refresh!)
+      expect(DisifyEmailProtection::ReviewQueue).not_to receive(:enqueue_create_or_refresh!)
 
       result = described_class.evaluate(
         email: "queue-disabled@example.com",

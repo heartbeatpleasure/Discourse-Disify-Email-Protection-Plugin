@@ -43,7 +43,16 @@ RSpec.describe DisifyEmailProtection::ModeratorDigest do
 
     expect(described_class.send_if_needed!(now: Time.utc(2026, 8, 19, 10, 0))).to eq(false)
     stored = PluginStore.get(DisifyEmailProtection::STORE_NAMESPACE, described_class::LAST_PERIOD_END_KEY)
-    expect(Time.zone.parse(stored)).to eq(Time.utc(2026, 8, 17, 9, 0))
+    expect(Time.zone.parse(stored)).to eq(Time.utc(2026, 8, 19, 10, 0))
+  end
+
+
+  it "starts the first later digest at the activation checkpoint instead of the previous schedule boundary" do
+    activation = Time.utc(2026, 8, 19, 10, 0)
+    described_class.send_if_needed!(now: activation)
+
+    next_period_end = Time.utc(2026, 8, 24, 9, 0)
+    expect(described_class.summary_period_start(next_period_end)).to eq(activation)
   end
 
   it "sends one grouped digest for new review activity and does not repeat the same period" do

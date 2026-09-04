@@ -5,6 +5,11 @@ require "rails_helper"
 RSpec.describe DisifyEmailProtection::ExistingUserScan do
   fab!(:admin)
 
+  before do
+    SiteSetting.disify_email_protection_enabled = true
+    SiteSetting.disify_email_protection_manual_scan_enabled = true
+  end
+
   after do
     PluginStore.remove(DisifyEmailProtection::STORE_NAMESPACE, described_class::STATE_KEY)
   end
@@ -83,6 +88,8 @@ RSpec.describe DisifyEmailProtection::ExistingUserScan do
 
   it "loads all Disify background job classes" do
     expect(defined?(Jobs::DisifyExistingUserScan)).to eq("constant")
+    expect(defined?(Jobs::DisifyEmailProtectionCreateReview)).to eq("constant")
+    expect(defined?(Jobs::DisifyEmailProtectionRecordValidationResult)).to eq("constant")
     expect(defined?(Jobs::DisifyEmailProtectionAnonymizeCleanup)).to eq("constant")
     expect(defined?(Jobs::DisifyEmailProtectionCleanup)).to eq("constant")
     expect(defined?(Jobs::DisifyEmailProtectionHealthCheck)).to eq("constant")
@@ -218,6 +225,85 @@ RSpec.describe DisifyEmailProtection::ExistingUserScan do
     expect(state["cursor"]).to eq(50)
     expect(state["processed"]).to eq(50)
     expect(state["flagged"]).to eq(5)
+  end
+
+
+  it "pauses a queued scan without contacting DISIFY when the plugin is disabled" do
+    token = "0123456789abcdef"
+    PluginStore.set(
+      DisifyEmailProtection::STORE_NAMESPACE,
+      described_class::STATE_KEY,
+      {
+        "scan_id" => "disabled-scan",
+        "status" => "running",
+        "started_at" => Time.zone.now.iso8601,
+        "last_activity_at" => Time.zone.now.iso8601,
+        "queued_job_token" => token,
+        "cursor" => 0,
+        "processed" => 0,
+        "flagged" => 0,
+      },
+    )
+    SiteSetting.disify_email_protection_enabled = false
+    expect(DisifyEmailProtection::Decision).not_to receive(:evaluate)
+
+    described_class.process_batch!("disabled-scan", token)
+
+    state = described_class.state
+    expect(state["status"]).to eq("paused")
+    expect(state["last_error"]).to eq("plugin_disabled")
+  end
+
+  it "skips anonymized users without contacting DISIFY or creating a review" do
+    anonymized = Fabricate(:user)
+    anonymized.primary_email.update_columns(
+      email: "anon#{anonymized.id}@anonymized.invalid",
+      normalized_email: "anon#{anonymized.id}@anonymized.invalid",
+    )
+
+    token = "fedcba9876543210"
+    PluginStore.set(
+      DisifyEmailProtection::STORE_NAMESPACE,
+      described_class::STATE_KEY,
+      {
+        "scan_id" => "anonymized-scan",
+        "status" => "running",
+        "started_at" => Time.zone.now.iso8601,
+        "last_activity_at" => Time.zone.now.iso8601,
+        "queued_job_token" => token,
+        "cursor" => anonymized.id - 1,
+        "processed" => 0,
+        "flagged" => 0,
+        "mode" => "domain_only",
+      },
+    )
+
+    allow(DisifyEmailProtection::CircuitBreaker).to receive(:open?).and_return(false)
+    expect(DisifyEmailProtection::Decision).not_to receive(:evaluate)
+    expect(DisifyEmailProtection::ReviewQueue).not_to receive(:create_or_refresh!)
+    allow(Jobs).to receive(:enqueue_in)
+
+    described_class.process_batch!("anonymized-scan", token)
+
+    state = described_class.raw_state
+    expect(state["processed"]).to eq(1)
+    expect(state["flagged"]).to eq(0)
+    expect(state["cursor"]).to eq(anonymized.id)
+  end
+
+  it "does not flag role addresses when the configured role action is ignore" do
+    SiteSetting.disify_email_protection_role_email_action = "ignore"
+    result = DisifyEmailProtection::Decision::DecisionResult.new(
+      decision: "allow",
+      reason: "role",
+      confidence: 100,
+      signals: ["role"],
+      source: "cache",
+      status: "success",
+      payload: {},
+    )
+
+    expect(described_class.risky_result?(result)).to eq(false)
   end
 
   it "does not expose internal worker tokens in admin-facing scan state" do

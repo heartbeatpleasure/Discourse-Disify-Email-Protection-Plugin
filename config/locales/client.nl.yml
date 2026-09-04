@@ -41,7 +41,7 @@ nl:
           label_api_key_configured: "API-key ingesteld"
           label_auth_mode: "Authenticatiemodus"
           label_fail_open: "Fail-open"
-          info_mode: "Monitor registreert risico zonder te blokkeren, Review leidt relevante bevindingen naar reviewgedrag en Enforce past de ingestelde blokkeerregels toe. De hier getoonde modus is de actuele site-instelling."
+          info_mode: "Monitor registreert providerrisico zonder te blokkeren, Review stuurt relevante providerbevindingen naar de reviewflow en Enforce past de ingestelde providerblokkeerregels toe. Expliciete lokale allow/block-policy-exceptions hebben altijd voorrang."
           info_auth_mode: "Toont hoe de server de ingestelde DISIFY-API-key meestuurt. De credential zelf blijft uitsluitend server-side en wordt hier nooit weergegeven."
           info_fail_open: "Wanneer dit is ingeschakeld, blokkeert een tijdelijke DISIFY-storing een gebruiker niet uitsluitend omdat de provider niet beschikbaar is. De onbeschikbaarheid blijft wel operationeel zichtbaar."
           label_last_check: "Laatste providerresponse"

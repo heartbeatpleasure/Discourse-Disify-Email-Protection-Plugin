@@ -36,7 +36,7 @@ module ::DisifyEmailProtection
         # A newly enabled digest starts with the next scheduled period instead of
         # immediately backfilling historical activity from before it was enabled.
         if last_processed_time.blank?
-          PluginStore.set(STORE_NAMESPACE, LAST_PERIOD_END_KEY, period_end.iso8601)
+          PluginStore.set(STORE_NAMESPACE, LAST_PERIOD_END_KEY, now.utc.iso8601)
           next false
         end
 

@@ -101,14 +101,25 @@ module ::DisifyEmailProtection
 
       with_state_lock do
         current_until = Discourse.redis.get(OPEN_UNTIL_KEY).to_i
-        # Never shorten an already-active protection window because another
-        # request happened to fail later with a shorter retry period.
-        next Time.at(current_until).in_time_zone if current_until > proposed_until
+        current_reason = Discourse.redis.get(REASON_KEY).to_s
+        effective_until = [current_until, proposed_until].max
 
-        ttl = [proposed_until - Time.zone.now.to_i, 1].max
-        Discourse.redis.setex(OPEN_UNTIL_KEY, ttl, proposed_until)
-        Discourse.redis.setex(REASON_KEY, ttl, reason.to_s.first(64))
-        Time.at(proposed_until).in_time_zone
+        # Never shorten an active window. Also preserve the strongest reason: a
+        # 429/quota backoff must stay protected from a late success even when a
+        # longer generic outage window was already open (or is opened later).
+        effective_reason =
+          if PROTECTED_BACKOFF_REASONS.include?(reason.to_s)
+            reason.to_s
+          elsif PROTECTED_BACKOFF_REASONS.include?(current_reason)
+            current_reason
+          else
+            reason.to_s
+          end
+
+        ttl = [effective_until - Time.zone.now.to_i, 1].max
+        Discourse.redis.setex(OPEN_UNTIL_KEY, ttl, effective_until)
+        Discourse.redis.setex(REASON_KEY, ttl, effective_reason.first(64))
+        Time.at(effective_until).in_time_zone
       end
     end
 

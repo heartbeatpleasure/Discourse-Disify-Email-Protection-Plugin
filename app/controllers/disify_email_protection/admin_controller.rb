@@ -47,18 +47,27 @@ module ::DisifyEmailProtection
         raise Discourse::InvalidParameters.new(:state)
       end
 
-      scope = ReviewItem.includes(:user, :resolved_by).order(id: :desc)
+      scope = ReviewItem.includes({ user: :primary_email }, :resolved_by).order(id: :desc)
       scope = scope.where(state: state) if state.present?
       total = scope.count
       max_page = [(total.to_f / per_page).ceil, 1].max
       page = [requested_page, max_page].min
-      items = scope.offset((page - 1) * per_page).limit(per_page)
+      items = scope.offset((page - 1) * per_page).limit(per_page).to_a
+      email_change_candidates = review_email_change_candidates(items)
 
       render_json_dump(
         page: page,
         per_page: per_page,
         total: total,
-        items: items.map { |item| serialize_review_item(item) },
+        items: items.map do |item|
+          serialize_review_item(
+            item,
+            recheck_available: review_recheck_email(
+              item,
+              email_change_candidates: email_change_candidates[item.user_id],
+            ).present?,
+          )
+        end,
       )
     end
 
@@ -109,17 +118,12 @@ module ::DisifyEmailProtection
 
     def recheck_review
       rate_limit_admin_action!("review-recheck")
-      item = ReviewItem.includes(:user).find(positive_integer_param!(:id))
-      raise Discourse::InvalidParameters.new(:review) if item.user.blank? || item.user.email.blank?
-
-      current_email = item.user.email.to_s
-      reviewed_hmac = Normalizer.email_hmac(current_email)
-      if item.email_hmac.blank? || reviewed_hmac.blank? || !ActiveSupport::SecurityUtils.secure_compare(item.email_hmac, reviewed_hmac)
-        raise Discourse::InvalidParameters.new(:review)
-      end
+      item = ReviewItem.includes(user: :primary_email).find(positive_integer_param!(:id))
+      reviewed_email = review_recheck_email(item)
+      raise Discourse::InvalidParameters.new(:review) if reviewed_email.blank?
 
       result = Decision.evaluate(
-        email: current_email,
+        email: reviewed_email,
         user: item.user,
         flow: "review_recheck",
         force_remote: true,
@@ -138,7 +142,7 @@ module ::DisifyEmailProtection
           configured_batch_size: SiteSetting.disify_email_protection_max_scan_batch_size.to_i,
           configured_mode: SiteSetting.disify_email_protection_manual_scan_full_email_mode.to_s,
         },
-        exceptions: PolicyException.effective.order(id: :desc).limit(200).map { |item| serialize_exception(item) },
+        exceptions: PolicyException.effective.includes(:created_by).order(id: :desc).limit(200).map { |item| serialize_exception(item) },
       )
     end
 
@@ -283,7 +287,7 @@ module ::DisifyEmailProtection
       ).performed!
     end
 
-    def serialize_review_item(item)
+    def serialize_review_item(item, recheck_available: false)
       {
         id: item.id,
         state: item.state,
@@ -295,6 +299,7 @@ module ::DisifyEmailProtection
         created_at: item.created_at&.iso8601,
         resolved_at: item.resolved_at&.iso8601,
         resolution: item.metadata.to_h["resolution"],
+        recheck_available: recheck_available,
         user: item.user && {
           id: item.user.id,
           username: item.user.username,
@@ -304,6 +309,54 @@ module ::DisifyEmailProtection
           username: item.resolved_by.username,
         },
       }
+    end
+
+    def review_email_change_candidates(items)
+      user_ids =
+        items.filter_map do |item|
+          item.user_id if item.flow == "email_change" && item.user_id.present?
+        end.uniq
+      return {} if user_ids.empty?
+
+      complete_state = EmailChangeRequest.states[:complete]
+      EmailChangeRequest
+        .where(user_id: user_ids)
+        .where.not(change_state: complete_state)
+        .order(id: :desc)
+        .pluck(:user_id, :new_email)
+        .each_with_object(Hash.new { |hash, key| hash[key] = [] }) do |(user_id, email), grouped|
+          grouped[user_id] << email
+        end
+    end
+
+    def review_recheck_email(item, email_change_candidates: nil)
+      return nil if item.user.blank? || item.email_hmac.blank?
+
+      current_email = item.user.email.to_s
+      return current_email if review_hmac_matches?(item.email_hmac, current_email)
+      return nil unless item.flow == "email_change"
+
+      candidates =
+        if email_change_candidates.nil?
+          EmailChangeRequest
+            .where(user_id: item.user_id)
+            .where.not(change_state: EmailChangeRequest.states[:complete])
+            .order(id: :desc)
+            .limit(20)
+            .pluck(:new_email)
+        else
+          Array(email_change_candidates)
+        end
+
+      candidates.find { |candidate| review_hmac_matches?(item.email_hmac, candidate) }
+    end
+
+    def review_hmac_matches?(expected_hmac, email)
+      actual_hmac = Normalizer.email_hmac(email)
+      return false if expected_hmac.blank? || actual_hmac.blank?
+      return false unless expected_hmac.bytesize == actual_hmac.bytesize
+
+      ActiveSupport::SecurityUtils.secure_compare(expected_hmac, actual_hmac)
     end
 
     def serialize_decision(result)

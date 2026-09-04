@@ -61,6 +61,34 @@ RSpec.describe DisifyEmailProtection::ReviewQueue do
     end
   end
 
+
+  describe ".enqueue_create_or_refresh!" do
+    it "queues only a privacy-safe fingerprint payload for validation reviews" do
+      SiteSetting.disify_email_protection_review_queue_enabled = true
+      email = "queued-review@example.com"
+      expect(Jobs::DisifyEmailProtectionCreateReview).to receive(:perform_async) do |payload|
+        expect(payload["email_hmac"]).to eq(DisifyEmailProtection::Normalizer.email_hmac(email))
+        expect(payload["email_domain"]).to eq("example.com")
+        expect(payload["user_id"]).to be_nil
+        expect(payload["current_site_id"]).to eq(RailsMultisite::ConnectionManagement.current_db)
+        expect(payload.to_json).not_to include(email)
+        "jid-123"
+      end
+
+      expect(
+        described_class.enqueue_create_or_refresh!(
+          email: email,
+          user: nil,
+          flow: "signup",
+          reason: "disposable",
+          confidence: 100,
+          signals: ["blacklist_exact"],
+          metadata: { "source" => "api" },
+        ),
+      ).to eq(true)
+    end
+  end
+
   it "rejects review decisions from non-admin actors" do
     item = build_review_item
     expect { described_class.approve!(item, user) }.to raise_error(Discourse::InvalidAccess)

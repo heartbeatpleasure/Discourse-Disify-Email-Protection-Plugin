@@ -18,6 +18,7 @@ module ::DisifyEmailProtection
     def start!(actor:, scan_mode: nil, request_id: nil)
       raise Discourse::InvalidAccess unless actor&.admin?
       raise Discourse::InvalidParameters.new(:scan) unless SiteSetting.disify_email_protection_manual_scan_enabled
+      raise Discourse::InvalidParameters.new(:plugin_disabled) unless SiteSetting.disify_email_protection_enabled
 
       mode = scan_mode.to_s.presence || SiteSetting.disify_email_protection_manual_scan_full_email_mode.to_s
       raise Discourse::InvalidParameters.new(:scan_mode) unless %w[domain_only trusted_providers all].include?(mode)
@@ -83,6 +84,7 @@ module ::DisifyEmailProtection
 
     def resume!(actor:)
       raise Discourse::InvalidAccess unless actor&.admin?
+      raise Discourse::InvalidParameters.new(:plugin_disabled) unless SiteSetting.disify_email_protection_enabled
 
       current = with_state_lock do
         scan = normalize_stale_without_lock!(raw_state)
@@ -144,13 +146,25 @@ module ::DisifyEmailProtection
 
       current, execution_token = claimed
 
+      unless SiteSetting.disify_email_protection_enabled
+        pause_error_if_active!(scan_id, "plugin_disabled", execution_token)
+        return
+      end
+
       if CircuitBreaker.open?
         wait_for_provider!(current, scan_id, "circuit_open", execution_token)
         return
       end
 
       batch_size = [[SiteSetting.disify_email_protection_max_scan_batch_size.to_i, 10].max, 500].min
-      users = User.real.where(staged: false).where("id > ?", current["cursor"].to_i).order(:id).limit(batch_size).to_a
+      users =
+        User.real
+          .where(staged: false)
+          .where("id > ?", current["cursor"].to_i)
+          .order(:id)
+          .limit(batch_size)
+          .preload(:primary_email)
+          .to_a
 
       if users.empty?
         complete_if_active!(current, scan_id, execution_token)
@@ -161,8 +175,13 @@ module ::DisifyEmailProtection
       users.each do |user|
         return unless still_active?(scan_id, execution_token)
 
+        unless SiteSetting.disify_email_protection_enabled
+          pause_error_if_active!(scan_id, "plugin_disabled", execution_token)
+          return
+        end
+
         email = user.email.to_s
-        if email.blank?
+        if email.blank? || ReviewQueue.anonymized_user?(user)
           current["processed"] = current["processed"].to_i + 1
           current["cursor"] = user.id
           current["last_activity_at"] = Time.zone.now.iso8601
@@ -194,13 +213,18 @@ module ::DisifyEmailProtection
 
         return unless still_active?(scan_id, execution_token)
 
+        unless SiteSetting.disify_email_protection_enabled
+          pause_error_if_active!(scan_id, "plugin_disabled", execution_token)
+          return
+        end
+
         if result.status == "unavailable"
           wait_for_provider!(current, scan_id, result.reason.to_s.presence || "provider_unavailable", execution_token)
           return
         end
 
         if risky_result?(result)
-          ReviewQueue.create_or_refresh!(
+          review_item = ReviewQueue.create_or_refresh!(
             email: email,
             user: user,
             flow: "existing_user_scan",
@@ -209,6 +233,11 @@ module ::DisifyEmailProtection
             signals: result.signals,
             metadata: { "source" => result.source, "scan_id" => scan_id },
           )
+          if SiteSetting.disify_email_protection_review_queue_enabled && review_item.nil?
+            pause_error_if_active!(scan_id, "review_queue_write_failed", execution_token)
+            return
+          end
+
           current["flagged"] = current["flagged"].to_i + 1
           UserNoteWriter.record!(
             user: user,
@@ -301,6 +330,8 @@ module ::DisifyEmailProtection
     end
 
     def risky_result?(result)
+      return false if %w[allow bypass fail_open].include?(result.decision.to_s)
+
       %w[disposable no_mx role].include?(result.reason.to_s) || result.decision == "block"
     end
 

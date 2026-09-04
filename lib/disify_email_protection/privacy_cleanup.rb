@@ -25,9 +25,9 @@ module ::DisifyEmailProtection
         ReviewItem.where(user_id: user_id).delete_all
 
         if email_hmacs.present?
-          PolicyException
-            .where(kind: %w[allow_email_hmac block_email_hmac], value: email_hmacs)
-            .delete_all
+          # Exact-email policy exceptions are site-wide administrative policy, not
+          # user-owned records. Removing them because one account is anonymized can
+          # silently undo a deliberate allow/block rule that also matters elsewhere.
           EmailCheck.where(cache_key: email_hmacs.map { |hmac| "email:#{hmac}" }).delete_all
         end
       end

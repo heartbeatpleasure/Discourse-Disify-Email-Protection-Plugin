@@ -329,7 +329,7 @@ export default RouteTemplate(
                       <button class="btn btn-primary" type="button" disabled={{@controller.workingId}} {{on "click" (fn @controller.approve item)}}>{{i18n "admin.disify_email_protection.review.approve"}}</button>
                       <button class="btn" type="button" disabled={{@controller.workingId}} {{on "click" (fn @controller.approvePermanently item)}}>{{i18n "admin.disify_email_protection.review.approve_permanent"}}</button>
                       <button class="btn btn-danger" type="button" disabled={{@controller.workingId}} {{on "click" (fn @controller.reject item)}}>{{i18n "admin.disify_email_protection.review.reject"}}</button>
-                      {{#if item.user}}
+                      {{#if item.recheck_available}}
                         <button class="btn" type="button" disabled={{@controller.workingId}} {{on "click" (fn @controller.recheck item)}}>{{i18n "admin.disify_email_protection.review.recheck"}}</button>
                       {{/if}}
                     </div>

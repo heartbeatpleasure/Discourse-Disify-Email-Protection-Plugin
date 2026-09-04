@@ -58,7 +58,7 @@ RSpec.describe DisifyEmailProtection::PrivacyCleanup do
     expect(event.email_domain).to be_nil
     expect(event.email_hmac).to be_nil
     expect(DisifyEmailProtection::ReviewItem.where(user_id: user.id)).to be_empty
-    expect(DisifyEmailProtection::PolicyException.where(value: hmac)).to be_empty
+    expect(DisifyEmailProtection::PolicyException.where(value: hmac).exists?).to eq(true)
     expect(DisifyEmailProtection::EmailCheck.where(cache_key: "email:#{hmac}")).to be_empty
   end
 
@@ -82,6 +82,29 @@ RSpec.describe DisifyEmailProtection::PrivacyCleanup do
     expect(event.reload.user_id).to be_nil
     expect(event.email_hmac).to be_nil
   end
+
+  it "runs anonymization cleanup even while the protection setting is disabled" do
+    SiteSetting.disify_email_protection_enabled = false
+    event = DisifyEmailProtection::EmailEvent.create!(
+      flow: "signup",
+      user_id: user.id,
+      email_domain: "example.com",
+      email_hmac: DisifyEmailProtection::Normalizer.email_hmac(user.email),
+      mode: "monitor",
+      decision: "allow",
+      reason: "clean",
+      signals: [],
+      disify_status: "success",
+      source: "api",
+      occurred_at: Time.zone.now,
+    )
+
+    DiscourseEvent.trigger(:user_anonymized, user: user, opts: {})
+
+    expect(event.reload.user_id).to be_nil
+    expect(event.email_hmac).to be_nil
+  end
+
   it "queues a retry when immediate cleanup after the core anonymization event fails" do
     allow(described_class).to receive(:anonymize_user!).with(user).and_return(false)
     expect(Jobs).to receive(:enqueue).with(

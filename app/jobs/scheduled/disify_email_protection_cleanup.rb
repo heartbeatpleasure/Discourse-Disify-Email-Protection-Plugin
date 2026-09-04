@@ -10,7 +10,7 @@ module Jobs
       now = Time.zone.now
       review_cutoff = SiteSetting.disify_email_protection_event_retention_days.to_i.days.ago
 
-      delete_in_batches(::DisifyEmailProtection::EmailCheck.where("expires_at < ?", now - 30.days))
+      delete_in_batches(::DisifyEmailProtection::EmailCheck.where("expires_at < ?", now))
       delete_in_batches(
         ::DisifyEmailProtection::EmailEvent.where(
           "occurred_at < ?",
@@ -40,6 +40,7 @@ module Jobs
         active: false,
         updated_at: now,
       )
+      ::DisifyEmailProtection::UserNoteWriter.cleanup_stale_debounce!(now: now)
     end
 
     private

@@ -211,7 +211,7 @@ RSpec.describe DisifyEmailProtection::AdminController do
   end
 
   describe "POST /admin/plugins/disify-email-protection/review/:id/recheck.json" do
-    it "refuses to recheck a different current email than the email stored in the review HMAC" do
+    it "refuses to recheck when neither the current nor pending candidate email matches the review HMAC" do
       item = DisifyEmailProtection::ReviewItem.create!(
         user_id: user.id,
         email_domain: "example.com",
@@ -229,6 +229,50 @@ RSpec.describe DisifyEmailProtection::AdminController do
       post "/admin/plugins/disify-email-protection/review/#{item.id}/recheck.json"
 
       expect(response.status).to eq(400)
+    end
+
+    it "rechecks the server-side pending EmailChangeRequest candidate without exposing it in review JSON" do
+      candidate = "candidate-change@example.com"
+      item = DisifyEmailProtection::ReviewItem.create!(
+        user_id: user.id,
+        email_domain: "example.com",
+        email_hmac: DisifyEmailProtection::Normalizer.email_hmac(candidate),
+        flow: "email_change",
+        reason: "disposable",
+        confidence: 100,
+        signals: ["blacklist_exact"],
+        state: "pending",
+        metadata: {},
+      )
+      EmailChangeRequest.create!(
+        user_id: user.id,
+        requested_by_user_id: user.id,
+        old_email: user.email,
+        new_email: candidate,
+        change_state: EmailChangeRequest.states[:authorizing_new],
+      )
+      result = DisifyEmailProtection::Decision::DecisionResult.new(
+        decision: "monitor",
+        reason: "disposable",
+        confidence: 100,
+        signals: ["blacklist_exact"],
+        source: "api",
+        status: "success",
+        payload: {},
+      )
+      expect(DisifyEmailProtection::Decision).to receive(:evaluate).with(
+        hash_including(email: candidate, user: user, flow: "review_recheck"),
+      ).and_return(result)
+
+      sign_in(admin)
+      post "/admin/plugins/disify-email-protection/review/#{item.id}/recheck.json"
+      expect(response.status).to eq(200)
+
+      get "/admin/plugins/disify-email-protection/review.json", params: { state: "pending", page: 1 }
+      expect(response.status).to eq(200)
+      serialized = response.parsed_body["items"].find { |entry| entry["id"] == item.id }
+      expect(serialized["recheck_available"]).to eq(true)
+      expect(response.body).not_to include(candidate)
     end
   end
 

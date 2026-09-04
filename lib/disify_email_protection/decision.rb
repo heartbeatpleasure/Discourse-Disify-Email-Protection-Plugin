@@ -57,7 +57,7 @@ module ::DisifyEmailProtection
           user,
           flow,
           mode,
-          apply_mode("block", mode),
+          "block",
           "policy_block",
           nil,
           [],
@@ -265,7 +265,7 @@ module ::DisifyEmailProtection
         if dry_run
           decision = "block" unless SiteSetting.disify_email_protection_review_queue_enabled
         else
-          review_item = ReviewQueue.create_or_refresh!(
+          review_queued = ReviewQueue.enqueue_create_or_refresh!(
             email: email,
             user: user,
             flow: flow,
@@ -274,7 +274,7 @@ module ::DisifyEmailProtection
             signals: signals,
             metadata: { "source" => source },
           )
-          decision = "block" if review_item.nil?
+          decision = "block" unless review_queued
         end
       end
 
@@ -311,9 +311,27 @@ module ::DisifyEmailProtection
       end
 
       counters[:api_errors] = 1 if status == "unavailable" && counters[:api_calls].to_i.positive?
-      Statistics.increment!(counters)
 
-      unless dry_run
+      durable_side_effects =
+        durable_validation_side_effects?(flow: flow, decision: decision, dry_run: dry_run) &&
+          enqueue_validation_side_effects!(
+            email: email,
+            user: user,
+            flow: flow,
+            mode: mode,
+            decision: decision,
+            reason: reason,
+            confidence: confidence,
+            signals: signals,
+            status: status,
+            latency_ms: latency_ms,
+            source: source,
+            counters: counters,
+          )
+
+      Statistics.increment!(counters) unless durable_side_effects
+
+      unless dry_run || durable_side_effects
         EventRecorder.record!(
           email: email,
           user: user,
@@ -328,13 +346,13 @@ module ::DisifyEmailProtection
           source: source,
         )
 
-        if user&.persisted? && %w[block review].include?(decision)
+        if user&.persisted? && decision == "block"
           UserNoteWriter.record!(
             user: user,
             reason: reason,
             domain: Normalizer.domain(email),
             confidence: confidence,
-            context: decision == "review" ? "review item created" : "email change blocked",
+            context: "email change blocked",
           )
         end
       end
@@ -350,6 +368,57 @@ module ::DisifyEmailProtection
         user_message_key: message_key || default_message_key(reason),
         payload: payload,
       )
+    end
+
+    def durable_validation_side_effects?(flow:, decision:, dry_run:)
+      !dry_run && %w[signup email_change staged_user].include?(flow.to_s) &&
+        %w[block review].include?(decision.to_s)
+    end
+
+    def enqueue_validation_side_effects!(
+      email:,
+      user:,
+      flow:,
+      mode:,
+      decision:,
+      reason:,
+      confidence:,
+      signals:,
+      status:,
+      latency_ms:,
+      source:,
+      counters:
+    )
+      hmac = Normalizer.email_hmac(email)
+      domain = Normalizer.domain(email)
+      return false if hmac.blank? || domain.blank?
+
+      payload = {
+        "email_hmac" => hmac,
+        "email_domain" => domain,
+        "user_id" => user&.persisted? ? user.id : nil,
+        "flow" => flow.to_s.first(32),
+        "mode" => mode.to_s.first(16),
+        "decision" => decision.to_s.first(16),
+        "reason" => reason.to_s.first(32),
+        "confidence" => confidence,
+        "signals" => Array(signals).filter_map { |signal| signal.to_s.strip.first(64).presence }.first(20),
+        "status" => status.to_s.first(24),
+        "latency_ms" => latency_ms,
+        "source" => source.to_s.first(16),
+        "counters" => Statistics::COUNTERS.index_with { |key| [counters[key].to_i, 0].max }.stringify_keys,
+        "current_site_id" => RailsMultisite::ConnectionManagement.current_db,
+      }
+
+      # Like review materialization, these writes must escape a UserEmail save
+      # transaction which intentionally rolls back when validation blocks/reviews.
+      # The payload contains only HMAC/domain fingerprints and aggregate counters.
+      Jobs::DisifyEmailProtectionRecordValidationResult.perform_async(payload).present?
+    rescue StandardError => e
+      Rails.logger.warn(
+        "[disify_email_protection] validation side-effect enqueue failed class=#{e.class}",
+      )
+      false
     end
 
     def remote_telemetry(client_result)

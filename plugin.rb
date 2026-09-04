@@ -2,7 +2,7 @@
 
 # name: Discourse-Disify-Email-Protection-Plugin
 # about: Adds disposable-email and deliverability protection to Discourse using DISIFY.
-# version: 0.1.16
+# version: 0.1.17
 # authors: Chris
 
 add_admin_route "admin.disify_email_protection.title", "disifyEmailProtection"
@@ -11,7 +11,7 @@ enabled_site_setting :disify_email_protection_enabled
 
 module ::DisifyEmailProtection
   PLUGIN_NAME = "Discourse-Disify-Email-Protection-Plugin"
-  PLUGIN_VERSION = "0.1.16"
+  PLUGIN_VERSION = "0.1.17"
   API_BASE_URL = "https://disify.com/api"
   STORE_NAMESPACE = "disify_email_protection"
   TRUSTED_ALIAS_DOMAINS = %w[
@@ -57,6 +57,8 @@ after_initialize do
   require_relative "lib/disify_email_protection/review_queue_notifier"
 
   require_relative "app/jobs/regular/disify_existing_user_scan"
+  require_relative "app/jobs/regular/disify_email_protection_create_review"
+  require_relative "app/jobs/regular/disify_email_protection_record_validation_result"
   require_relative "app/jobs/regular/disify_email_protection_anonymize_cleanup"
   require_relative "app/jobs/scheduled/disify_email_protection_cleanup"
   require_relative "app/jobs/scheduled/disify_email_protection_health_check"
@@ -120,7 +122,10 @@ after_initialize do
     end
   end
 
-  on(:user_anonymized) do |payload|
+  # Privacy/lifecycle cleanup must run even when the protection setting is temporarily
+  # disabled. Plugin#on intentionally suppresses handlers while a plugin is disabled,
+  # so use the core event directly for this one lifecycle-only handler.
+  DiscourseEvent.on(:user_anonymized) do |payload|
     user_record = payload.is_a?(Hash) ? (payload[:user] || payload["user"]) : payload
     next if user_record.blank?
 

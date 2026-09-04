@@ -83,6 +83,7 @@ RSpec.describe DisifyEmailProtection::ExistingUserScan do
 
   it "loads all Disify background job classes" do
     expect(defined?(Jobs::DisifyExistingUserScan)).to eq("constant")
+    expect(defined?(Jobs::DisifyEmailProtectionAnonymizeCleanup)).to eq("constant")
     expect(defined?(Jobs::DisifyEmailProtectionCleanup)).to eq("constant")
     expect(defined?(Jobs::DisifyEmailProtectionHealthCheck)).to eq("constant")
     expect(defined?(Jobs::DisifyEmailProtectionModeratorDigest)).to eq("constant")
@@ -164,6 +165,77 @@ RSpec.describe DisifyEmailProtection::ExistingUserScan do
     expect(described_class.provider_rate_limit_nearly_exhausted?).to eq(true)
   ensure
     PluginStore.remove(DisifyEmailProtection::STORE_NAMESPACE, DisifyEmailProtection::Health::HEALTH_KEY)
+  end
+
+  it "lets only one worker claim a queued scan token" do
+    token = "0123456789abcdef"
+    PluginStore.set(
+      DisifyEmailProtection::STORE_NAMESPACE,
+      described_class::STATE_KEY,
+      {
+        "scan_id" => "claim-scan",
+        "status" => "running",
+        "started_at" => Time.zone.now.iso8601,
+        "last_activity_at" => Time.zone.now.iso8601,
+        "queued_job_token" => token,
+      },
+    )
+
+    first = described_class.claim_job!("claim-scan", token)
+    second = described_class.claim_job!("claim-scan", token)
+
+    expect(first).to be_present
+    expect(first.last).to eq(token)
+    expect(second).to be_nil
+    expect(described_class.raw_state["active_job_token"]).to eq(token)
+  end
+
+  it "prevents a stale worker from checkpointing over a newer active generation" do
+    PluginStore.set(
+      DisifyEmailProtection::STORE_NAMESPACE,
+      described_class::STATE_KEY,
+      {
+        "scan_id" => "fenced-scan",
+        "status" => "running",
+        "cursor" => 50,
+        "processed" => 50,
+        "flagged" => 5,
+        "last_activity_at" => Time.zone.now.iso8601,
+        "active_job_token" => "1111111111111111",
+      },
+    )
+    stale = { "cursor" => 100, "processed" => 100, "flagged" => 10 }
+
+    expect(
+      described_class.checkpoint_progress_if_active!(
+        stale,
+        "fenced-scan",
+        "2222222222222222",
+      ),
+    ).to eq(false)
+
+    state = described_class.raw_state
+    expect(state["cursor"]).to eq(50)
+    expect(state["processed"]).to eq(50)
+    expect(state["flagged"]).to eq(5)
+  end
+
+  it "does not expose internal worker tokens in admin-facing scan state" do
+    PluginStore.set(
+      DisifyEmailProtection::STORE_NAMESPACE,
+      described_class::STATE_KEY,
+      {
+        "scan_id" => "public-state-scan",
+        "status" => "running",
+        "last_activity_at" => Time.zone.now.iso8601,
+        "queued_job_token" => "0123456789abcdef",
+        "active_job_token" => nil,
+      },
+    )
+
+    state = described_class.state
+    expect(state).not_to have_key("queued_job_token")
+    expect(state).not_to have_key("active_job_token")
   end
 
 end

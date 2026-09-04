@@ -112,8 +112,14 @@ module ::DisifyEmailProtection
       item = ReviewItem.includes(:user).find(positive_integer_param!(:id))
       raise Discourse::InvalidParameters.new(:review) if item.user.blank? || item.user.email.blank?
 
+      current_email = item.user.email.to_s
+      reviewed_hmac = Normalizer.email_hmac(current_email)
+      if item.email_hmac.blank? || reviewed_hmac.blank? || !ActiveSupport::SecurityUtils.secure_compare(item.email_hmac, reviewed_hmac)
+        raise Discourse::InvalidParameters.new(:review)
+      end
+
       result = Decision.evaluate(
-        email: item.user.email,
+        email: current_email,
         user: item.user,
         flow: "review_recheck",
         force_remote: true,

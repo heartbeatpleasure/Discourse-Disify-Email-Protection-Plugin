@@ -63,4 +63,33 @@ RSpec.describe "DISIFY UserEmail validation" do
     email = UserEmail.new(user: user, email: "not-an-email", primary: false)
     email.valid?
   end
+  it "checks staged users when the staged-user setting is enabled despite the core staged validation skip" do
+    SiteSetting.disify_email_protection_check_staged_users = true
+    result = DisifyEmailProtection::Decision::DecisionResult.new(
+      decision: "allow",
+      reason: "clean",
+      confidence: 0,
+      signals: [],
+      source: "api",
+      status: "success",
+      user_message_key: nil,
+      payload: {},
+    )
+    expect(DisifyEmailProtection::Decision).to receive(:evaluate).with(
+      hash_including(flow: "staged_user"),
+    ).once.and_return(result)
+
+    staged_user = Fabricate.build(:user, staged: true, email: "incoming-staged@example.com")
+    staged_user.valid?
+  end
+
+  it "preserves an explicit user-level email-validation skip for staged auth flows" do
+    SiteSetting.disify_email_protection_check_staged_users = true
+    expect(DisifyEmailProtection::Decision).not_to receive(:evaluate)
+
+    staged_user = Fabricate.build(:user, staged: true, email: "trusted-auth@example.com")
+    staged_user.skip_email_validation = true
+    staged_user.valid?
+  end
+
 end

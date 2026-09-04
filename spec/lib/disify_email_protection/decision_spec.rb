@@ -137,4 +137,64 @@ RSpec.describe DisifyEmailProtection::Decision do
     end
   end
 
+  describe ".evaluate review side effects" do
+    let(:risky_cache) do
+      {
+        "result" => {
+          "format" => true,
+          "dns" => true,
+          "disposable" => true,
+          "confidence" => 100,
+          "signals" => ["blacklist_exact"],
+        },
+      }
+    end
+
+    before do
+      SiteSetting.disify_email_protection_enabled = true
+      SiteSetting.disify_email_protection_mode = "review"
+      SiteSetting.disify_email_protection_review_queue_enabled = true
+      allow(DisifyEmailProtection::PolicyExceptions).to receive(:decision_for).and_return(nil)
+      allow(DisifyEmailProtection::Cache).to receive(:fetch_email).and_return(risky_cache)
+      allow(DisifyEmailProtection::Cache).to receive(:fetch_risky_domain).and_return(nil)
+      allow(DisifyEmailProtection::EventRecorder).to receive(:record!)
+      allow(DisifyEmailProtection::Statistics).to receive(:increment!)
+      allow(DisifyEmailProtection::UserNoteWriter).to receive(:record!)
+    end
+
+    it "creates a review item for signup before a user record exists" do
+      review_item = instance_double(DisifyEmailProtection::ReviewItem)
+      expect(DisifyEmailProtection::ReviewQueue).to receive(:create_or_refresh!).with(
+        hash_including(email: "new-member@example.com", user: nil, flow: "signup"),
+      ).and_return(review_item)
+
+      result = described_class.evaluate(email: "new-member@example.com", user: nil, flow: "signup")
+
+      expect(result.decision).to eq("review")
+    end
+
+    it "fails closed as a block if a required review item cannot be created" do
+      allow(DisifyEmailProtection::ReviewQueue).to receive(:create_or_refresh!).and_return(nil)
+
+      result = described_class.evaluate(email: "queue-failure@example.com", user: nil, flow: "signup")
+
+      expect(result.decision).to eq("block")
+      expect(result.reason).to eq("disposable")
+    end
+
+    it "reports a block in dry-run mode when the review queue is disabled" do
+      SiteSetting.disify_email_protection_review_queue_enabled = false
+      expect(DisifyEmailProtection::ReviewQueue).not_to receive(:create_or_refresh!)
+
+      result = described_class.evaluate(
+        email: "queue-disabled@example.com",
+        user: nil,
+        flow: "admin_tool",
+        dry_run: true,
+      )
+
+      expect(result.decision).to eq("block")
+    end
+  end
+
 end

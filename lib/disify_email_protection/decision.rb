@@ -261,6 +261,23 @@ module ::DisifyEmailProtection
       message_key = nil,
       telemetry: {}
     )
+      if decision == "review"
+        if dry_run
+          decision = "block" unless SiteSetting.disify_email_protection_review_queue_enabled
+        else
+          review_item = ReviewQueue.create_or_refresh!(
+            email: email,
+            user: user,
+            flow: flow,
+            reason: reason,
+            confidence: confidence,
+            signals: signals,
+            metadata: { "source" => source },
+          )
+          decision = "block" if review_item.nil?
+        end
+      end
+
       # Aggregate operational statistics cover every real validation evaluation,
       # including admin dry-run checks, review rechecks and existing-user scans.
       # `dry_run` continues to suppress user-facing/policy side effects only.
@@ -310,18 +327,6 @@ module ::DisifyEmailProtection
           latency_ms: latency_ms,
           source: source,
         )
-
-        if decision == "review" && user&.persisted?
-          ReviewQueue.create_or_refresh!(
-            email: email,
-            user: user,
-            flow: flow,
-            reason: reason,
-            confidence: confidence,
-            signals: signals,
-            metadata: { "source" => source },
-          )
-        end
 
         if user&.persisted? && %w[block review].include?(decision)
           UserNoteWriter.record!(

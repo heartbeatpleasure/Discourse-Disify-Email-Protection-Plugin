@@ -210,4 +210,26 @@ RSpec.describe DisifyEmailProtection::AdminController do
     end
   end
 
+  describe "POST /admin/plugins/disify-email-protection/review/:id/recheck.json" do
+    it "refuses to recheck a different current email than the email stored in the review HMAC" do
+      item = DisifyEmailProtection::ReviewItem.create!(
+        user_id: user.id,
+        email_domain: "example.com",
+        email_hmac: DisifyEmailProtection::Normalizer.email_hmac("candidate-change@example.com"),
+        flow: "email_change",
+        reason: "disposable",
+        confidence: 100,
+        signals: ["blacklist_exact"],
+        state: "pending",
+        metadata: {},
+      )
+      expect(DisifyEmailProtection::Decision).not_to receive(:evaluate)
+
+      sign_in(admin)
+      post "/admin/plugins/disify-email-protection/review/#{item.id}/recheck.json"
+
+      expect(response.status).to eq(400)
+    end
+  end
+
 end

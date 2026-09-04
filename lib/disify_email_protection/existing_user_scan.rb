@@ -11,6 +11,7 @@ module ::DisifyEmailProtection
     CHECKPOINT_EVERY = 10
     PROVIDER_RATE_LIMIT_RESERVE = 1
     REQUEST_ID_PATTERN = /\A[a-z0-9._:-]{1,128}\z/i
+    JOB_TOKEN_PATTERN = /\A[0-9a-f]{16}\z/.freeze
     ACTIVE_STATUSES = %w[running waiting].freeze
     BLOCKING_STATUSES = %w[running waiting paused].freeze
 
@@ -39,6 +40,7 @@ module ::DisifyEmailProtection
 
         now = Time.zone.now
         scan_id = SecureRandom.hex(8)
+        job_token = SecureRandom.hex(8)
         new_state = {
           "scan_id" => scan_id,
           "status" => "running",
@@ -53,6 +55,8 @@ module ::DisifyEmailProtection
           "flagged" => 0,
           "total" => User.real.where(staged: false).count,
           "last_error" => nil,
+          "queued_job_token" => job_token,
+          "active_job_token" => nil,
         }
         store(new_state)
         new_state
@@ -60,13 +64,21 @@ module ::DisifyEmailProtection
 
       if should_enqueue
         begin
-          Jobs.enqueue(Jobs::DisifyExistingUserScan, scan_id: payload["scan_id"])
+          Jobs.enqueue(
+            Jobs::DisifyExistingUserScan,
+            scan_id: payload["scan_id"],
+            job_token: payload["queued_job_token"],
+          )
         rescue StandardError
-          pause_error_if_active!(payload["scan_id"], "enqueue_failed")
+          pause_error_if_active!(
+            payload["scan_id"],
+            "enqueue_failed",
+            queued_token: payload["queued_job_token"],
+          )
           raise
         end
       end
-      payload
+      public_state(payload)
     end
 
     def resume!(actor:)
@@ -81,17 +93,27 @@ module ::DisifyEmailProtection
         scan["paused_at"] = nil
         scan["last_activity_at"] = Time.zone.now.iso8601
         scan["next_run_at"] = nil
+        scan["queued_job_token"] = SecureRandom.hex(8)
+        scan["active_job_token"] = nil
         store(scan)
         scan
       end
 
       begin
-        Jobs.enqueue(Jobs::DisifyExistingUserScan, scan_id: current["scan_id"])
+        Jobs.enqueue(
+          Jobs::DisifyExistingUserScan,
+          scan_id: current["scan_id"],
+          job_token: current["queued_job_token"],
+        )
       rescue StandardError
-        pause_error_if_active!(current["scan_id"], "enqueue_failed")
+        pause_error_if_active!(
+          current["scan_id"],
+          "enqueue_failed",
+          queued_token: current["queued_job_token"],
+        )
         raise
       end
-      current
+      public_state(current)
     end
 
     def cancel!(actor:)
@@ -99,7 +121,7 @@ module ::DisifyEmailProtection
 
       with_state_lock do
         current = normalize_stale_without_lock!(raw_state)
-        next current unless BLOCKING_STATUSES.include?(current["status"])
+        next public_state(current) unless BLOCKING_STATUSES.include?(current["status"])
 
         now = Time.zone.now.iso8601
         current["status"] = "cancelled"
@@ -108,28 +130,22 @@ module ::DisifyEmailProtection
         current["last_activity_at"] = now
         current["next_run_at"] = nil
         current["last_error"] = nil
+        current["queued_job_token"] = nil
+        current["active_job_token"] = nil
         store(current)
-        current
+        public_state(current)
       end
     end
 
-    def process_batch!(scan_id)
-      current = with_state_lock do
-        scan = normalize_stale_without_lock!(raw_state)
-        next nil unless scan["scan_id"] == scan_id && ACTIVE_STATUSES.include?(scan["status"])
+    def process_batch!(scan_id, job_token = nil)
+      execution_token = nil
+      claimed = claim_job!(scan_id, job_token)
+      return if claimed.nil?
 
-        was_waiting = scan["status"] == "waiting"
-        scan["status"] = "running"
-        scan["last_activity_at"] = Time.zone.now.iso8601
-        scan["next_run_at"] = nil
-        scan["last_error"] = nil if was_waiting
-        store(scan)
-        scan
-      end
-      return if current.nil?
+      current, execution_token = claimed
 
       if CircuitBreaker.open?
-        wait_for_provider!(current, scan_id, "circuit_open")
+        wait_for_provider!(current, scan_id, "circuit_open", execution_token)
         return
       end
 
@@ -137,13 +153,13 @@ module ::DisifyEmailProtection
       users = User.real.where(staged: false).where("id > ?", current["cursor"].to_i).order(:id).limit(batch_size).to_a
 
       if users.empty?
-        complete_if_active!(current, scan_id)
+        complete_if_active!(current, scan_id, execution_token)
         return
       end
 
       processed_since_checkpoint = 0
       users.each do |user|
-        return unless still_active?(scan_id)
+        return unless still_active?(scan_id, execution_token)
 
         email = user.email.to_s
         if email.blank?
@@ -152,7 +168,7 @@ module ::DisifyEmailProtection
           current["last_activity_at"] = Time.zone.now.iso8601
           processed_since_checkpoint += 1
           if processed_since_checkpoint >= CHECKPOINT_EVERY
-            return unless checkpoint_progress_if_active!(current, scan_id)
+            return unless checkpoint_progress_if_active!(current, scan_id, execution_token)
             processed_since_checkpoint = 0
           end
           next
@@ -176,10 +192,10 @@ module ::DisifyEmailProtection
           mode_override: "monitor",
         )
 
-        return unless still_active?(scan_id)
+        return unless still_active?(scan_id, execution_token)
 
         if result.status == "unavailable"
-          wait_for_provider!(current, scan_id, result.reason.to_s.presence || "provider_unavailable")
+          wait_for_provider!(current, scan_id, result.reason.to_s.presence || "provider_unavailable", execution_token)
           return
         end
 
@@ -208,24 +224,35 @@ module ::DisifyEmailProtection
         current["last_activity_at"] = Time.zone.now.iso8601
         processed_since_checkpoint += 1
         if processed_since_checkpoint >= CHECKPOINT_EVERY
-          return unless checkpoint_progress_if_active!(current, scan_id)
+          return unless checkpoint_progress_if_active!(current, scan_id, execution_token)
           processed_since_checkpoint = 0
         end
 
         if result.source == "api" && provider_rate_limit_nearly_exhausted?
-          wait_for_provider!(current, scan_id, "rate_limit_window")
+          wait_for_provider!(current, scan_id, "rate_limit_window", execution_token)
           return
         end
       end
 
-      scheduled = schedule_next_if_active!(current, scan_id)
-      Jobs.enqueue_in(NORMAL_BATCH_DELAY, :disify_existing_user_scan, { scan_id: scan_id }) if scheduled
+      next_job_token = schedule_next_if_active!(current, scan_id, execution_token)
+      if next_job_token.present?
+        begin
+          Jobs.enqueue_in(
+            NORMAL_BATCH_DELAY,
+            :disify_existing_user_scan,
+            { scan_id: scan_id, job_token: next_job_token },
+          )
+        rescue StandardError
+          pause_error_if_active!(scan_id, "enqueue_failed", queued_token: next_job_token)
+          raise
+        end
+      end
     rescue StandardError => e
-      pause_error_if_active!(scan_id, e.class.to_s)
+      pause_error_if_active!(scan_id, e.class.to_s, execution_token)
       Rails.logger.warn("[disify_email_protection] existing scan paused class=#{e.class}")
     end
 
-    def wait_for_provider!(current, scan_id, reason)
+    def wait_for_provider!(current, scan_id, reason, execution_token = nil)
       open_until = CircuitBreaker.open_until
       delay = if open_until.present? && open_until > Time.zone.now
         [(open_until - Time.zone.now).ceil + 5, NORMAL_BATCH_DELAY.to_i].max.seconds
@@ -233,20 +260,35 @@ module ::DisifyEmailProtection
         NORMAL_BATCH_DELAY
       end
 
-      scheduled = with_state_lock do
+      next_job_token = with_state_lock do
         latest = raw_state
-        next false unless latest["scan_id"] == scan_id && ACTIVE_STATUSES.include?(latest["status"])
+        next nil unless owned_active_state?(latest, scan_id, execution_token)
 
         now = Time.zone.now
-        current["status"] = "waiting"
-        current["last_error"] = reason
-        current["last_activity_at"] = now.iso8601
-        current["next_run_at"] = (now + delay).iso8601
-        store(current)
-        true
+        merge_progress!(latest, current)
+        token = SecureRandom.hex(8)
+        latest["status"] = "waiting"
+        latest["last_error"] = reason
+        latest["last_activity_at"] = now.iso8601
+        latest["next_run_at"] = (now + delay).iso8601
+        latest["active_job_token"] = nil
+        latest["queued_job_token"] = token
+        store(latest)
+        token
       end
 
-      Jobs.enqueue_in(delay, :disify_existing_user_scan, { scan_id: scan_id }) if scheduled
+      return if next_job_token.blank?
+
+      begin
+        Jobs.enqueue_in(
+          delay,
+          :disify_existing_user_scan,
+          { scan_id: scan_id, job_token: next_job_token },
+        )
+      rescue StandardError
+        pause_error_if_active!(scan_id, "enqueue_failed", queued_token: next_job_token)
+        raise
+      end
     end
 
     def provider_rate_limit_nearly_exhausted?
@@ -263,7 +305,7 @@ module ::DisifyEmailProtection
     end
 
     def state
-      with_state_lock { normalize_stale_without_lock!(raw_state) }
+      public_state(with_state_lock { normalize_stale_without_lock!(raw_state) })
     end
 
     def raw_state
@@ -271,20 +313,49 @@ module ::DisifyEmailProtection
       value.is_a?(Hash) ? value.deep_stringify_keys : { "status" => "idle" }
     end
 
-    def still_active?(scan_id)
-      latest = raw_state
-      latest["scan_id"] == scan_id && ACTIVE_STATUSES.include?(latest["status"])
+    def claim_job!(scan_id, job_token = nil)
+      supplied_token = job_token.to_s.presence
+      return nil if supplied_token.present? && !JOB_TOKEN_PATTERN.match?(supplied_token)
+
+      with_state_lock do
+        scan = normalize_stale_without_lock!(raw_state)
+        next nil unless scan["scan_id"] == scan_id && ACTIVE_STATUSES.include?(scan["status"])
+
+        queued_token = scan["queued_job_token"].to_s.presence
+        active_token = scan["active_job_token"].to_s.presence
+
+        if queued_token.present?
+          next nil unless supplied_token == queued_token
+        elsif supplied_token.present? || active_token.present?
+          # A tokened job with no matching queued token is stale/duplicate. A legacy
+          # tokenless job may claim only when no worker is already active.
+          next nil
+        end
+
+        execution_token = queued_token || SecureRandom.hex(8)
+        was_waiting = scan["status"] == "waiting"
+        scan["status"] = "running"
+        scan["last_activity_at"] = Time.zone.now.iso8601
+        scan["next_run_at"] = nil
+        scan["last_error"] = nil if was_waiting
+        scan["queued_job_token"] = nil
+        scan["active_job_token"] = execution_token
+        store(scan)
+        [scan, execution_token]
+      end
     end
 
-    def checkpoint_progress_if_active!(current, scan_id)
+    def still_active?(scan_id, execution_token = nil)
+      owned_active_state?(raw_state, scan_id, execution_token)
+    end
+
+    def checkpoint_progress_if_active!(current, scan_id, execution_token = nil)
       with_state_lock do
         latest = raw_state
-        next false unless latest["scan_id"] == scan_id && ACTIVE_STATUSES.include?(latest["status"])
+        next false unless owned_active_state?(latest, scan_id, execution_token)
 
         now = Time.zone.now.iso8601
-        latest["cursor"] = [latest["cursor"].to_i, current["cursor"].to_i].max
-        latest["processed"] = [latest["processed"].to_i, current["processed"].to_i].max
-        latest["flagged"] = [latest["flagged"].to_i, current["flagged"].to_i].max
+        merge_progress!(latest, current)
         latest["last_activity_at"] = now
         store(latest)
         current["last_activity_at"] = now
@@ -292,39 +363,54 @@ module ::DisifyEmailProtection
       end
     end
 
-    def complete_if_active!(current, scan_id)
+    def complete_if_active!(current, scan_id, execution_token = nil)
       with_state_lock do
         latest = raw_state
-        next false unless latest["scan_id"] == scan_id && ACTIVE_STATUSES.include?(latest["status"])
+        next false unless owned_active_state?(latest, scan_id, execution_token)
 
         now = Time.zone.now.iso8601
-        current["status"] = "completed"
-        current["completed_at"] = now
-        current["last_activity_at"] = now
-        current["next_run_at"] = nil
-        store(current)
+        merge_progress!(latest, current)
+        latest["status"] = "completed"
+        latest["completed_at"] = now
+        latest["last_activity_at"] = now
+        latest["next_run_at"] = nil
+        latest["active_job_token"] = nil
+        latest["queued_job_token"] = nil
+        store(latest)
         true
       end
     end
 
-    def schedule_next_if_active!(current, scan_id)
+    def schedule_next_if_active!(current, scan_id, execution_token = nil)
       with_state_lock do
         latest = raw_state
-        next false unless latest["scan_id"] == scan_id && ACTIVE_STATUSES.include?(latest["status"])
+        next nil unless owned_active_state?(latest, scan_id, execution_token)
 
         now = Time.zone.now
-        current["status"] = "running"
-        current["last_activity_at"] = now.iso8601
-        current["next_run_at"] = (now + NORMAL_BATCH_DELAY).iso8601
-        store(current)
-        true
+        merge_progress!(latest, current)
+        token = SecureRandom.hex(8)
+        latest["status"] = "running"
+        latest["last_activity_at"] = now.iso8601
+        latest["next_run_at"] = (now + NORMAL_BATCH_DELAY).iso8601
+        latest["active_job_token"] = nil
+        latest["queued_job_token"] = token
+        store(latest)
+        token
       end
     end
 
-    def pause_error_if_active!(scan_id, error_code)
+    def pause_error_if_active!(scan_id, error_code, execution_token = nil, queued_token: nil)
       with_state_lock do
         latest = raw_state
         next latest unless latest["scan_id"] == scan_id && ACTIVE_STATUSES.include?(latest["status"])
+
+        if execution_token.present?
+          next latest unless latest["active_job_token"].to_s == execution_token.to_s
+        elsif queued_token.present?
+          next latest unless latest["queued_job_token"].to_s == queued_token.to_s
+        elsif latest["active_job_token"].present? || latest["queued_job_token"].present?
+          next latest
+        end
 
         now = Time.zone.now.iso8601
         latest["status"] = "paused"
@@ -332,9 +418,31 @@ module ::DisifyEmailProtection
         latest["last_activity_at"] = now
         latest["next_run_at"] = nil
         latest["last_error"] = error_code
+        latest["active_job_token"] = nil
+        latest["queued_job_token"] = nil
         store(latest)
         latest
       end
+    end
+
+    def owned_active_state?(latest, scan_id, execution_token)
+      return false unless latest["scan_id"] == scan_id && ACTIVE_STATUSES.include?(latest["status"])
+
+      active_token = latest["active_job_token"].to_s.presence
+      return active_token.blank? if execution_token.blank?
+
+      active_token == execution_token.to_s
+    end
+
+    def merge_progress!(latest, current)
+      latest["cursor"] = [latest["cursor"].to_i, current["cursor"].to_i].max
+      latest["processed"] = [latest["processed"].to_i, current["processed"].to_i].max
+      latest["flagged"] = [latest["flagged"].to_i, current["flagged"].to_i].max
+      latest
+    end
+
+    def public_state(value)
+      value.to_h.except("queued_job_token", "active_job_token")
     end
 
     def normalize_stale_without_lock!(current)
@@ -347,6 +455,8 @@ module ::DisifyEmailProtection
       current["last_activity_at"] = now
       current["next_run_at"] = nil
       current["last_error"] = "stale_scan"
+      current["queued_job_token"] = nil
+      current["active_job_token"] = nil
       store(current)
       current
     end

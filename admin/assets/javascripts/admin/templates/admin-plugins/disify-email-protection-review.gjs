@@ -249,8 +249,14 @@ export default RouteTemplate(
             <option value="pending">{{i18n "admin.disify_email_protection.review.state_pending"}}</option>
             <option value="approved">{{i18n "admin.disify_email_protection.review.state_approved"}}</option>
             <option value="rejected">{{i18n "admin.disify_email_protection.review.state_rejected"}}</option>
+            <option value="remediation">{{i18n "admin.disify_email_protection.review.state_remediation"}}</option>
             <option value="expired">{{i18n "admin.disify_email_protection.review.state_expired"}}</option>
           </select>
+          {{#if @controller.showBulkAction}}
+            <button class="btn btn-primary" type="button" disabled={{@controller.workingId}} {{on "click" @controller.bulkRequireChange}}>
+              {{@controller.bulkActionLabel}} ({{@controller.data.bulk_candidate_count}})
+            </button>
+          {{/if}}
         </div>
       </section>
 
@@ -321,18 +327,42 @@ export default RouteTemplate(
                           <a href={{item.resolved_by_url}}><strong>{{item.resolved_by.username}}</strong></a>
                         </div>
                       {{/if}}
+                      {{#if item.remediation}}
+                        <div>
+                          {{i18n "admin.disify_email_protection.review.remediation_deadline"}}:
+                          <strong>{{item.remediation_enforce_at_display}}</strong>
+                        </div>
+                        {{#if item.remediation.active}}
+                          <div><strong>{{i18n "admin.disify_email_protection.review.remediation_waiting"}}</strong></div>
+                        {{/if}}
+                        {{#if item.remediation.restricted_at}}
+                          <div><strong>{{i18n "admin.disify_email_protection.review.remediation_restricted"}}</strong></div>
+                        {{/if}}
+                      {{/if}}
                     {{/unless}}
                   </div>
 
                   {{#if (eq item.state "pending")}}
                     <div class="dep-review__card-actions">
-                      <button class="btn btn-primary" type="button" disabled={{@controller.workingId}} {{on "click" (fn @controller.approve item)}}>{{i18n "admin.disify_email_protection.review.approve"}}</button>
-                      <button class="btn" type="button" disabled={{@controller.workingId}} {{on "click" (fn @controller.approvePermanently item)}}>{{i18n "admin.disify_email_protection.review.approve_permanent"}}</button>
-                      <button class="btn btn-danger" type="button" disabled={{@controller.workingId}} {{on "click" (fn @controller.reject item)}}>{{i18n "admin.disify_email_protection.review.reject"}}</button>
+                      {{#if item.existing_user_review}}
+                        <button class="btn btn-primary" type="button" disabled={{@controller.workingId}} {{on "click" (fn @controller.approve item)}}>{{i18n "admin.disify_email_protection.review.approve_existing"}}</button>
+                        <button class="btn" type="button" disabled={{@controller.workingId}} {{on "click" (fn @controller.approvePermanently item)}}>{{i18n "admin.disify_email_protection.review.approve_permanent"}}</button>
+                        <button class="btn btn-danger" type="button" disabled={{@controller.workingId}} {{on "click" (fn @controller.requireChange item)}}>{{i18n "admin.disify_email_protection.review.require_change"}}</button>
+                      {{else}}
+                        <button class="btn btn-primary" type="button" disabled={{@controller.workingId}} {{on "click" (fn @controller.approve item)}}>{{i18n "admin.disify_email_protection.review.approve"}}</button>
+                        <button class="btn" type="button" disabled={{@controller.workingId}} {{on "click" (fn @controller.approvePermanently item)}}>{{i18n "admin.disify_email_protection.review.approve_permanent"}}</button>
+                        <button class="btn btn-danger" type="button" disabled={{@controller.workingId}} {{on "click" (fn @controller.reject item)}}>{{i18n "admin.disify_email_protection.review.reject"}}</button>
+                      {{/if}}
                       {{#if item.recheck_available}}
                         <button class="btn" type="button" disabled={{@controller.workingId}} {{on "click" (fn @controller.recheck item)}}>{{i18n "admin.disify_email_protection.review.recheck"}}</button>
                       {{/if}}
                     </div>
+                  {{else}}
+                    {{#if item.remediation.active}}
+                      <div class="dep-review__card-actions">
+                        <button class="btn" type="button" disabled={{@controller.workingId}} {{on "click" (fn @controller.cancelRemediation item)}}>{{i18n "admin.disify_email_protection.review.cancel_remediation"}}</button>
+                      </div>
+                    {{/if}}
                   {{/if}}
                 </div>
               </article>

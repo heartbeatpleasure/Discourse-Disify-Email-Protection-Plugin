@@ -6,8 +6,9 @@ module ::DisifyEmailProtection
 
     belongs_to :user, optional: true
     belongs_to :resolved_by, class_name: "User", optional: true
+    has_one :email_remediation, class_name: "DisifyEmailProtection::EmailRemediation", foreign_key: :review_item_id
 
-    STATES = %w[pending approved rejected expired].freeze
+    STATES = %w[pending approved rejected remediation expired].freeze
 
     validates :flow, :reason, :state, presence: true
     validates :state, inclusion: { in: STATES }, length: { maximum: 16 }

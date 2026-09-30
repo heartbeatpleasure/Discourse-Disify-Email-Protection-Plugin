@@ -47,7 +47,7 @@ module ::DisifyEmailProtection
         raise Discourse::InvalidParameters.new(:state)
       end
 
-      scope = ReviewItem.includes({ user: :primary_email }, :resolved_by).order(id: :desc)
+      scope = ReviewItem.includes({ user: :primary_email }, :resolved_by, :email_remediation).order(id: :desc)
       scope = scope.where(state: state) if state.present?
       total = scope.count
       max_page = [(total.to_f / per_page).ceil, 1].max
@@ -59,6 +59,8 @@ module ::DisifyEmailProtection
         page: page,
         per_page: per_page,
         total: total,
+        bulk_remediation_enabled: SiteSetting.disify_email_protection_bulk_remediation_enabled,
+        bulk_candidate_count: bulk_candidate_count(state),
         items: items.map do |item|
           serialize_review_item(
             item,
@@ -75,7 +77,8 @@ module ::DisifyEmailProtection
       rate_limit_admin_action!("review-approve")
       item = ReviewItem.find(positive_integer_param!(:id))
       ReviewQueue.approve!(item, current_user)
-      StaffAudit.log!(actor: current_user, action: "review_approved", details: { review_id: item.id, resolution: "allow_7_days" })
+      resolution = item.reload.metadata.to_h["resolution"]
+      StaffAudit.log!(actor: current_user, action: "review_approved", details: { review_id: item.id, resolution: resolution })
       UserNoteWriter.record!(
         user: item.user,
         reason: item.reason,
@@ -114,6 +117,71 @@ module ::DisifyEmailProtection
         context: "email risk review rejected by staff",
       ) if item.user.present?
       render_json_dump(success: true, item: serialize_review_item(item.reload))
+    end
+
+    def require_email_change
+      rate_limit_admin_action!("review-require-change")
+      item = ReviewItem.includes(user: :primary_email).find(positive_integer_param!(:id))
+      remediation = RemediationManager.require_change!(item, current_user)
+      RemediationNotifier.notify_required!(remediation)
+      StaffAudit.log!(
+        actor: current_user,
+        action: "remediation_required",
+        details: { review_id: item.id, remediation_id: remediation.id, user_id: remediation.user_id },
+      )
+      UserNoteWriter.record!(
+        user: remediation.user,
+        reason: remediation.reason,
+        domain: remediation.email_domain,
+        confidence: remediation.confidence,
+        context: "email change required by staff",
+      )
+      render_json_dump(success: true, item: serialize_review_item(item.reload))
+    end
+
+    def cancel_email_remediation
+      rate_limit_admin_action!("review-cancel-remediation")
+      item = ReviewItem.includes(:email_remediation).find(positive_integer_param!(:id))
+      remediation = item.email_remediation
+      raise Discourse::InvalidParameters.new(:remediation) if remediation.blank? || !remediation.active?
+
+      RemediationManager.cancel!(remediation, current_user)
+      StaffAudit.log!(
+        actor: current_user,
+        action: "remediation_cancelled",
+        details: { review_id: item.id, remediation_id: remediation.id, user_id: remediation.user_id },
+      )
+      UserNoteWriter.record!(
+        user: remediation.user,
+        reason: remediation.reason,
+        domain: remediation.email_domain,
+        confidence: remediation.confidence,
+        context: "email-change requirement cancelled by staff",
+      ) if remediation.user.present?
+      render_json_dump(success: true, item: serialize_review_item(item.reload))
+    end
+
+    def bulk_require_email_change
+      rate_limit_admin_action!("review-bulk-require-change", 5)
+      raise Discourse::InvalidAccess unless SiteSetting.disify_email_protection_bulk_remediation_enabled
+
+      state = params[:state].to_s
+      raise Discourse::InvalidParameters.new(:state) unless %w[pending rejected].include?(state)
+
+      review_ids = RemediationManager.bulk_candidate_ids(state)
+      candidate_count = review_ids.length
+      Jobs.enqueue(
+        :disify_email_protection_bulk_require_change,
+        actor_id: current_user.id,
+        state: state,
+        review_ids: review_ids,
+      ) if candidate_count.positive?
+      StaffAudit.log!(
+        actor: current_user,
+        action: "remediation_bulk_started",
+        details: { bulk_state: state, candidate_count: candidate_count },
+      )
+      render_json_dump(success: true, queued: candidate_count.positive?, candidate_count: candidate_count)
     end
 
     def recheck_review
@@ -300,6 +368,8 @@ module ::DisifyEmailProtection
         resolved_at: item.resolved_at&.iso8601,
         resolution: item.metadata.to_h["resolution"],
         recheck_available: recheck_available,
+        existing_user_review: item.flow == "existing_user_scan",
+        remediation: serialize_remediation(item.email_remediation),
         user: item.user && {
           id: item.user.id,
           username: item.user.username,
@@ -309,6 +379,28 @@ module ::DisifyEmailProtection
           username: item.resolved_by.username,
         },
       }
+    end
+
+    def serialize_remediation(remediation)
+      return nil if remediation.blank?
+
+      {
+        id: remediation.id,
+        state: remediation.state,
+        active: remediation.active,
+        required_at: remediation.required_at&.iso8601,
+        enforce_at: remediation.enforce_at&.iso8601,
+        restricted_at: remediation.restricted_at&.iso8601,
+        resolved_at: remediation.resolved_at&.iso8601,
+        resolution: remediation.resolution,
+      }
+    end
+
+    def bulk_candidate_count(state)
+      return 0 unless SiteSetting.disify_email_protection_bulk_remediation_enabled
+      return 0 unless %w[pending rejected].include?(state.to_s)
+
+      RemediationManager.bulk_candidate_ids(state).length
     end
 
     def review_email_change_candidates(items)

@@ -14,6 +14,9 @@ module ::DisifyEmailProtection
       scan_resumed
       scan_cancelled
       circuit_reset
+      remediation_required
+      remediation_cancelled
+      remediation_bulk_started
     ].freeze
     SAFE_DETAIL_KEYS = %i[
       review_id
@@ -23,6 +26,10 @@ module ::DisifyEmailProtection
       scan_id
       scan_mode
       scan_status
+      remediation_id
+      user_id
+      bulk_state
+      candidate_count
     ].freeze
     SAFE_TOKEN = /\A[a-z0-9_.:-]{1,80}\z/i
 

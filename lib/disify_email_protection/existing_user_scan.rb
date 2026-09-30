@@ -171,6 +171,13 @@ module ::DisifyEmailProtection
         return
       end
 
+      active_remediation_user_ids =
+        if SiteSetting.disify_email_protection_existing_user_remediation_enabled
+          EmailRemediation.active.where(user_id: users.map(&:id)).pluck(:user_id).index_with(true)
+        else
+          {}
+        end
+
       processed_since_checkpoint = 0
       users.each do |user|
         return unless still_active?(scan_id, execution_token)
@@ -181,7 +188,7 @@ module ::DisifyEmailProtection
         end
 
         email = user.email.to_s
-        if email.blank? || ReviewQueue.anonymized_user?(user)
+        if email.blank? || ReviewQueue.anonymized_user?(user) || active_remediation_user_ids[user.id]
           current["processed"] = current["processed"].to_i + 1
           current["cursor"] = user.id
           current["last_activity_at"] = Time.zone.now.iso8601
@@ -233,19 +240,25 @@ module ::DisifyEmailProtection
             signals: result.signals,
             metadata: { "source" => result.source, "scan_id" => scan_id },
           )
-          if SiteSetting.disify_email_protection_review_queue_enabled && review_item.nil?
+          remediation_became_active =
+            SiteSetting.disify_email_protection_existing_user_remediation_enabled &&
+              EmailRemediation.active.where(user_id: user.id).exists?
+
+          if SiteSetting.disify_email_protection_review_queue_enabled && review_item.nil? && !remediation_became_active
             pause_error_if_active!(scan_id, "review_queue_write_failed", execution_token)
             return
           end
 
-          current["flagged"] = current["flagged"].to_i + 1
-          UserNoteWriter.record!(
-            user: user,
-            reason: result.reason,
-            domain: domain,
-            confidence: result.confidence,
-            context: "manual existing-user scan flagged this account",
-          )
+          unless remediation_became_active
+            current["flagged"] = current["flagged"].to_i + 1
+            UserNoteWriter.record!(
+              user: user,
+              reason: result.reason,
+              domain: domain,
+              confidence: result.confidence,
+              context: "manual existing-user scan flagged this account",
+            )
+          end
         end
 
         current["processed"] = current["processed"].to_i + 1

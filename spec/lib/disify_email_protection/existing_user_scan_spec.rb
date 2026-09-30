@@ -291,6 +291,52 @@ RSpec.describe DisifyEmailProtection::ExistingUserScan do
     expect(state["cursor"]).to eq(anonymized.id)
   end
 
+  it "skips users who already have an active email-change remediation" do
+    SiteSetting.disify_email_protection_existing_user_remediation_enabled = true
+    remediated = Fabricate(:user)
+    DisifyEmailProtection::EmailRemediation.create!(
+      user_id: remediated.id,
+      required_by_id: admin.id,
+      email_hmac: DisifyEmailProtection::Normalizer.email_hmac(remediated.email),
+      email_domain: DisifyEmailProtection::Normalizer.domain(remediated.email),
+      reason: "disposable",
+      confidence: 100,
+      state: "required",
+      active: true,
+      required_at: Time.zone.now,
+      enforce_at: 60.days.from_now,
+    )
+
+    token = "0011223344556677"
+    PluginStore.set(
+      DisifyEmailProtection::STORE_NAMESPACE,
+      described_class::STATE_KEY,
+      {
+        "scan_id" => "remediated-scan",
+        "status" => "running",
+        "started_at" => Time.zone.now.iso8601,
+        "last_activity_at" => Time.zone.now.iso8601,
+        "queued_job_token" => token,
+        "cursor" => remediated.id - 1,
+        "processed" => 0,
+        "flagged" => 0,
+        "mode" => "domain_only",
+      },
+    )
+
+    allow(DisifyEmailProtection::CircuitBreaker).to receive(:open?).and_return(false)
+    expect(DisifyEmailProtection::Decision).not_to receive(:evaluate)
+    expect(DisifyEmailProtection::ReviewQueue).not_to receive(:create_or_refresh!)
+    allow(Jobs).to receive(:enqueue_in)
+
+    described_class.process_batch!("remediated-scan", token)
+
+    state = described_class.raw_state
+    expect(state["processed"]).to eq(1)
+    expect(state["flagged"]).to eq(0)
+    expect(state["cursor"]).to eq(remediated.id)
+  end
+
   it "does not flag role addresses when the configured role action is ignore" do
     SiteSetting.disify_email_protection_role_email_action = "ignore"
     result = DisifyEmailProtection::Decision::DecisionResult.new(

@@ -37,6 +37,14 @@ The security decision is enforced when a `UserEmail` is validated for persistenc
 
 The scan is manual only. The default scan mode sends domains rather than complete email addresses. Alias-sensitive trusted providers can optionally be checked with full email addresses, and an explicit all-address mode is available behind an administrator confirmation. Scans are rate-limit aware, resumable, cache domain results, and pause before advancing the cursor when DISIFY becomes unavailable or rate limited.
 
+## Existing-user email remediation
+
+Existing-user scan findings use a separate remediation workflow rather than suspending or disabling accounts. For an `existing_user_scan` review item, administrators can temporarily allow the exact address for 30 days, permanently allow that exact address, or require the user to change it. A required change creates a user-linked remediation record containing only the email HMAC and domain; raw email addresses are not added to plugin tables.
+
+The grace period defaults to 60 days and is configurable from 1 to 120 days. User PM notifications and the non-dismissible banner can be enabled independently. After the grace period, the site can either continue notifying only or restrict normal write actions while still allowing login, reading, session recovery, and email-change operations. Staff accounts are never hard-restricted by remediation.
+
+If DISIFY is unavailable while a restricted user replaces the address and fail-open permits the change, normal access is restored immediately and the replacement is verified asynchronously. A later risky result creates a new staff review instead of silently re-restricting the account. Optional bulk remediation is disabled by default and snapshots only the eligible review items that existed when the administrator confirmed the bulk action.
+
 ## Production rollout
 
 1. Install with `disify_email_protection_enabled` disabled.

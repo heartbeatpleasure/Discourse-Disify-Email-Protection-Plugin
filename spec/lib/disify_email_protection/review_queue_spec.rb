@@ -23,7 +23,7 @@ RSpec.describe DisifyEmailProtection::ReviewQueue do
   end
 
   describe ".approve!" do
-    it "creates only a temporary exact-email allow exception" do
+    it "allows an existing-user scan email for 30 days" do
       item = build_review_item
 
       described_class.approve!(item, admin)
@@ -32,6 +32,17 @@ RSpec.describe DisifyEmailProtection::ReviewQueue do
       expect(exception.kind).to eq("allow_email_hmac")
       expect(exception.value).to eq(item.email_hmac)
       expect(exception.expires_at).to be_present
+      expect(exception.expires_at).to be_within(5.seconds).of(30.days.from_now)
+      expect(item.reload.metadata["resolution"]).to eq("allow_30_days")
+    end
+
+    it "keeps the 7-day temporary approval for non-scan reviews" do
+      item = build_review_item
+      item.update!(flow: "email_change")
+
+      described_class.approve!(item, admin)
+
+      exception = DisifyEmailProtection::PolicyException.order(:id).last
       expect(exception.expires_at).to be_within(5.seconds).of(7.days.from_now)
       expect(item.reload.metadata["resolution"]).to eq("allow_7_days")
     end
@@ -61,6 +72,16 @@ RSpec.describe DisifyEmailProtection::ReviewQueue do
     end
   end
 
+
+  describe ".reject!" do
+    it "does not use the legacy 30-day rejection for existing-user scan reviews when remediation is enabled" do
+      SiteSetting.disify_email_protection_existing_user_remediation_enabled = true
+      item = build_review_item
+
+      expect { described_class.reject!(item, admin) }.to raise_error(Discourse::InvalidParameters)
+      expect(item.reload.state).to eq("pending")
+    end
+  end
 
   describe ".enqueue_create_or_refresh!" do
     it "queues only a privacy-safe fingerprint payload for validation reviews" do
@@ -111,6 +132,66 @@ RSpec.describe DisifyEmailProtection::ReviewQueue do
 
     expect(result).to be_nil
     expect(DisifyEmailProtection::ReviewItem.where(user_id: user.id)).to be_empty
+  end
+
+  it "does not reopen a normal existing-user scan review while remediation is active" do
+    SiteSetting.disify_email_protection_existing_user_remediation_enabled = true
+    DisifyEmailProtection::EmailRemediation.create!(
+      user_id: user.id,
+      required_by_id: admin.id,
+      email_hmac: DisifyEmailProtection::Normalizer.email_hmac(user.email),
+      email_domain: DisifyEmailProtection::Normalizer.domain(user.email),
+      reason: "disposable",
+      confidence: 100,
+      state: "required",
+      active: true,
+      required_at: Time.zone.now,
+      enforce_at: 60.days.from_now,
+    )
+
+    result = described_class.create_or_refresh_from_fingerprint!(
+      email_hmac: DisifyEmailProtection::Normalizer.email_hmac(user.email),
+      email_domain: DisifyEmailProtection::Normalizer.domain(user.email),
+      user: user,
+      flow: "existing_user_scan",
+      reason: "disposable",
+      confidence: 100,
+      signals: [],
+      metadata: { "source" => "api" },
+    )
+
+    expect(result).to be_nil
+    expect(DisifyEmailProtection::ReviewItem.where(user_id: user.id)).to be_empty
+  end
+
+  it "allows a replacement-email remediation recheck to create a new review" do
+    SiteSetting.disify_email_protection_existing_user_remediation_enabled = true
+    DisifyEmailProtection::EmailRemediation.create!(
+      user_id: user.id,
+      required_by_id: admin.id,
+      email_hmac: DisifyEmailProtection::Normalizer.email_hmac("old-remediation@example.com"),
+      email_domain: "example.com",
+      reason: "disposable",
+      confidence: 100,
+      state: "required",
+      active: true,
+      required_at: Time.zone.now,
+      enforce_at: 60.days.from_now,
+    )
+
+    result = described_class.create_or_refresh_from_fingerprint!(
+      email_hmac: DisifyEmailProtection::Normalizer.email_hmac(user.email),
+      email_domain: DisifyEmailProtection::Normalizer.domain(user.email),
+      user: user,
+      flow: "existing_user_scan",
+      reason: "disposable",
+      confidence: 100,
+      signals: [],
+      metadata: { "source" => "remediation_recheck" },
+    )
+
+    expect(result).to be_present
+    expect(result.state).to eq("pending")
   end
 
   it "rejects review decisions from non-admin actors" do

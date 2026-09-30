@@ -10,6 +10,9 @@ RSpec.describe DisifyEmailProtection::PrivacyCleanup do
     email = user.email
     hmac = DisifyEmailProtection::Normalizer.email_hmac(email)
     domain = DisifyEmailProtection::Normalizer.domain(email)
+    replacement_email = "replacement-privacy@example.org"
+    replacement_hmac = DisifyEmailProtection::Normalizer.email_hmac(replacement_email)
+    replacement_domain = DisifyEmailProtection::Normalizer.domain(replacement_email)
 
     event = DisifyEmailProtection::EmailEvent.create!(
       flow: "email_change",
@@ -50,6 +53,26 @@ RSpec.describe DisifyEmailProtection::PrivacyCleanup do
       checked_at: Time.zone.now,
       expires_at: 15.minutes.from_now,
     )
+    DisifyEmailProtection::EmailRemediation.create!(
+      user_id: user.id,
+      required_by_id: admin.id,
+      email_hmac: replacement_hmac,
+      email_domain: replacement_domain,
+      reason: "disposable",
+      confidence: 100,
+      state: "verification_pending",
+      active: true,
+      required_at: Time.zone.now,
+      enforce_at: 60.days.from_now,
+    )
+    DisifyEmailProtection::EmailCheck.create!(
+      cache_key: "email:#{replacement_hmac}",
+      check_type: "email",
+      email_domain: replacement_domain,
+      result: { "format" => true },
+      checked_at: Time.zone.now,
+      expires_at: 15.minutes.from_now,
+    )
 
     expect(described_class.anonymize_user!(user)).to eq(true)
 
@@ -58,8 +81,10 @@ RSpec.describe DisifyEmailProtection::PrivacyCleanup do
     expect(event.email_domain).to be_nil
     expect(event.email_hmac).to be_nil
     expect(DisifyEmailProtection::ReviewItem.where(user_id: user.id)).to be_empty
+    expect(DisifyEmailProtection::EmailRemediation.where(user_id: user.id)).to be_empty
     expect(DisifyEmailProtection::PolicyException.where(value: hmac).exists?).to eq(true)
     expect(DisifyEmailProtection::EmailCheck.where(cache_key: "email:#{hmac}")).to be_empty
+    expect(DisifyEmailProtection::EmailCheck.where(cache_key: "email:#{replacement_hmac}")).to be_empty
   end
 
   it "is wired to Discourse's user_anonymized event" do

@@ -23,6 +23,7 @@ function stateLabel(state) {
     pending: "state_pending",
     approved: "state_approved",
     rejected: "state_rejected",
+    remediation: "state_remediation",
     expired: "state_expired",
   }[state];
 
@@ -60,8 +61,15 @@ function flowLabel(flow) {
 function resolutionLabel(resolution) {
   const key = {
     allow_7_days: "resolution_allow_7_days",
+    allow_30_days: "resolution_allow_30_days",
     allow_permanent: "resolution_allow_permanent",
     block_30_days: "resolution_block_30_days",
+    email_change_required: "resolution_email_change_required",
+    email_change_cancelled: "resolution_email_change_cancelled",
+    email_change_resolved: "resolution_email_change_resolved",
+    replacement_requires_review: "resolution_replacement_requires_review",
+    superseded_by_email_change_requirement:
+      "resolution_superseded_by_email_change_requirement",
   }[resolution];
 
   return key
@@ -86,6 +94,22 @@ export default class AdminPluginsDisifyEmailProtectionReviewController extends C
   get hasNextPage() {
     return Boolean(
       this.data && this.page * this.data.per_page < this.data.total
+    );
+  }
+
+  get showBulkAction() {
+    return Boolean(
+      this.data?.bulk_remediation_enabled &&
+        this.data?.bulk_candidate_count > 0 &&
+        ["pending", "rejected"].includes(this.state)
+    );
+  }
+
+  get bulkActionLabel() {
+    return i18n(
+      this.state === "rejected"
+        ? "admin.disify_email_protection.review.bulk_rejected"
+        : "admin.disify_email_protection.review.bulk_pending"
     );
   }
 
@@ -130,6 +154,9 @@ export default class AdminPluginsDisifyEmailProtectionReviewController extends C
           reason_label: reasonLabel(item.reason),
           flow_label: flowLabel(item.flow),
           resolution_label: resolutionLabel(item.resolution),
+          remediation_enforce_at_display: formatDisifyDate(
+            item.remediation?.enforce_at
+          ),
           confidence_display:
             item.confidence === null || item.confidence === undefined
               ? "—"
@@ -187,7 +214,9 @@ export default class AdminPluginsDisifyEmailProtectionReviewController extends C
     return this.perform(
       item,
       "approve",
-      "admin.disify_email_protection.review.approve_success"
+      item.existing_user_review
+        ? "admin.disify_email_protection.review.approve_existing_success"
+        : "admin.disify_email_protection.review.approve_success"
     );
   }
 
@@ -222,6 +251,96 @@ export default class AdminPluginsDisifyEmailProtectionReviewController extends C
       "reject",
       "admin.disify_email_protection.review.reject_success"
     );
+  }
+
+  @action
+  requireChange(item) {
+    if (this.workingId) {
+      return;
+    }
+
+    this.dialog.confirm({
+      title: i18n(
+        "admin.disify_email_protection.review.require_change_dialog_title"
+      ),
+      message: i18n(
+        "admin.disify_email_protection.review.require_change_dialog_message"
+      ),
+      confirmButtonLabel:
+        "admin.disify_email_protection.review.require_change_dialog_confirm",
+      didConfirm: () =>
+        this.perform(
+          item,
+          "require-change",
+          "admin.disify_email_protection.review.require_change_success"
+        ),
+    });
+  }
+
+  @action
+  cancelRemediation(item) {
+    if (this.workingId) {
+      return;
+    }
+
+    this.dialog.confirm({
+      title: i18n(
+        "admin.disify_email_protection.review.cancel_remediation_dialog_title"
+      ),
+      message: i18n(
+        "admin.disify_email_protection.review.cancel_remediation_dialog_message"
+      ),
+      confirmButtonLabel:
+        "admin.disify_email_protection.review.cancel_remediation_dialog_confirm",
+      didConfirm: () =>
+        this.perform(
+          item,
+          "cancel-remediation",
+          "admin.disify_email_protection.review.cancel_remediation_success"
+        ),
+    });
+  }
+
+  @action
+  bulkRequireChange() {
+    const count = this.data?.bulk_candidate_count || 0;
+    if (this.workingId || !this.data?.bulk_remediation_enabled || count <= 0) {
+      return;
+    }
+
+    this.dialog.confirm({
+      title: i18n(
+        "admin.disify_email_protection.review.bulk_dialog_title"
+      ),
+      message: i18n(
+        "admin.disify_email_protection.review.bulk_dialog_message",
+        { count }
+      ),
+      confirmButtonLabel:
+        "admin.disify_email_protection.review.bulk_dialog_confirm",
+      didConfirm: async () => {
+        this.workingId = "bulk";
+        try {
+          const result = await ajax(
+            "/admin/plugins/disify-email-protection/review/bulk-require-change.json",
+            { type: "POST", data: { state: this.state } }
+          );
+          await this.loadReview();
+          this.toasts.success({
+            data: {
+              message: i18n(
+                "admin.disify_email_protection.review.bulk_success",
+                { count: result?.candidate_count || count }
+              ),
+            },
+          });
+        } catch (error) {
+          popupAjaxError(error);
+        } finally {
+          this.workingId = undefined;
+        }
+      },
+    });
   }
 
   @action

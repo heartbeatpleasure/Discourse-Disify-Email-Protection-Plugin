@@ -217,3 +217,34 @@ plugins:
     min: 10
     max: 500
     client: false
+
+  disify_email_protection_existing_user_remediation_enabled:
+    default: true
+    client: false
+
+  disify_email_protection_remediation_grace_period_days:
+    default: 60
+    type: integer
+    min: 1
+    max: 120
+    client: false
+
+  disify_email_protection_remediation_after_grace:
+    default: "restrict_account"
+    type: enum
+    choices:
+      - notify_only
+      - restrict_account
+    client: false
+
+  disify_email_protection_remediation_user_pm_enabled:
+    default: true
+    client: false
+
+  disify_email_protection_remediation_banner_enabled:
+    default: true
+    client: false
+
+  disify_email_protection_bulk_remediation_enabled:
+    default: false
+    client: false

@@ -13,7 +13,8 @@ module ::DisifyEmailProtection
       email_hmacs =
         (
           EmailEvent.where(user_id: user_id).where.not(email_hmac: nil).pluck(:email_hmac) +
-            ReviewItem.where(user_id: user_id).where.not(email_hmac: nil).pluck(:email_hmac)
+            ReviewItem.where(user_id: user_id).where.not(email_hmac: nil).pluck(:email_hmac) +
+            EmailRemediation.where(user_id: user_id).where.not(email_hmac: nil).pluck(:email_hmac)
         ).uniq
 
       EmailEvent.transaction do
@@ -22,6 +23,7 @@ module ::DisifyEmailProtection
           email_domain: nil,
           email_hmac: nil,
         )
+        EmailRemediation.where(user_id: user_id).delete_all
         ReviewItem.where(user_id: user_id).delete_all
 
         if email_hmacs.present?

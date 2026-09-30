@@ -71,8 +71,20 @@ module ::DisifyEmailProtection
 
       normalized_reason = reason.to_s.first(32)
       return nil if normalized_reason.blank?
+      normalized_metadata = metadata.to_h.deep_stringify_keys.slice("source", "scan_id")
 
       writer = lambda do |fresh_user|
+        # A manual existing-user scan must not re-open review work after staff
+        # has already started remediation for that user's current address. The
+        # remediation recheck path is deliberately exempt: when the user has
+        # supplied a replacement that is itself risky, staff must see a new
+        # review item for that replacement.
+        if fresh_user.present? && flow.to_s == "existing_user_scan" &&
+             normalized_metadata["source"] != "remediation_recheck" &&
+             defined?(EmailRemediation) && EmailRemediation.active.where(user_id: fresh_user.id).exists?
+          next nil
+        end
+
         mutex_key = "disify-email-protection-review-#{hmac.first(32)}-#{normalized_reason.first(32)}"
         DistributedMutex.synchronize(mutex_key, validity: 10) do
           scope = ReviewItem.pending.where(email_hmac: hmac, reason: normalized_reason)
@@ -85,7 +97,7 @@ module ::DisifyEmailProtection
           item.confidence = confidence
           item.signals = Array(signals).filter_map { |signal| signal.to_s.strip.first(64).presence }.first(20)
           item.state = "pending"
-          item.metadata = metadata.to_h.deep_stringify_keys.slice("source", "scan_id")
+          item.metadata = normalized_metadata
           item.save!
           item
         end
@@ -106,12 +118,13 @@ module ::DisifyEmailProtection
     end
 
     def approve!(item, actor)
+      days = item.flow == "existing_user_scan" ? 30 : 7
       approve_with_policy!(
         item,
         actor,
-        expires_at: 7.days.from_now,
-        resolution: "allow_7_days",
-        reason: "Approved for 7 days from email risk review ##{item.id}",
+        expires_at: days.days.from_now,
+        resolution: "allow_#{days}_days",
+        reason: "Approved for #{days} days from email risk review ##{item.id}",
       )
     end
 
@@ -129,6 +142,9 @@ module ::DisifyEmailProtection
       ensure_admin_actor!(actor)
       item.with_lock do
         raise Discourse::InvalidParameters.new(:review) unless item.state == "pending"
+        if item.flow == "existing_user_scan" && SiteSetting.disify_email_protection_existing_user_remediation_enabled
+          raise Discourse::InvalidParameters.new(:review)
+        end
 
         if item.email_hmac.present?
           PolicyExceptions.create!(

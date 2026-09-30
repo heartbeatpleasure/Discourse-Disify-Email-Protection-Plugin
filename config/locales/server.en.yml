@@ -33,6 +33,12 @@ en:
     disify_email_protection_manual_scan_enabled: "Allow admins to launch a manual scan of existing users."
     disify_email_protection_manual_scan_full_email_mode: "Data mode for manual existing-user scans."
     disify_email_protection_max_scan_batch_size: "Maximum number of users processed by one existing-user scan job batch."
+    disify_email_protection_existing_user_remediation_enabled: "Enable the existing-user email remediation workflow. Admins can require an existing user to replace a reviewed risky email without suspending the account."
+    disify_email_protection_remediation_grace_period_days: "Number of days an existing user has to replace a risky current email after staff selects Require email change. Allowed range: 1-120 days; default is 60."
+    disify_email_protection_remediation_after_grace: "What happens after the email-change grace period expires: notify_only keeps normal account access, restrict_account keeps login/read access but blocks normal write actions until the email is changed. Staff accounts are never hard-restricted by this workflow."
+    disify_email_protection_remediation_user_pm_enabled: "Send the affected user a system private message when an email change is required, plus at most one reminder near the deadline."
+    disify_email_protection_remediation_banner_enabled: "Show a non-dismissible banner to users who are required to change their email address."
+    disify_email_protection_bulk_remediation_enabled: "Allow admins to start a bulk Require email change action for eligible existing-user review items. Disabled by default."
 
   dashboard:
     problem:
@@ -70,6 +76,24 @@ en:
           This is a grouped reminder; individual findings do not generate separate messages.
 
           Administrators can [open the review queue](/admin/plugins/disify-email-protection-review)
+
+    remediation:
+      restricted_error: "You need to change your email address before you can continue using this action. Please open your email preferences and replace the current address."
+      user_pm:
+        required:
+          title: "Please change your email address"
+          body: |
+            Your current email address was identified as unsuitable for continued account use. For account security and recovery, please replace it with a regular email address that you can keep access to.
+
+            Please make this change by **%{deadline}**. Until then your account remains available as normal.
+
+            [Change your email address](%{email_path})
+        reminder:
+          title: "Reminder: please change your email address"
+          body: |
+            Your account still requires a new email address. Please replace the current address by **%{deadline}**.
+
+            [Change your email address](%{email_path})
 
     errors:
       disposable_email: "is a disposable or temporary email address. For security and account-recovery reasons, disposable email addresses are not allowed. Please use a regular email address that you can keep access to."

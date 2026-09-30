@@ -164,6 +164,66 @@ RSpec.describe DisifyEmailProtection::AdminController do
   end
 
 
+  describe "POST /admin/plugins/disify-email-protection/review/:id/require-change.json" do
+    it "creates an existing-user remediation for the current reviewed email" do
+      SiteSetting.disify_email_protection_existing_user_remediation_enabled = true
+      SiteSetting.disify_email_protection_remediation_user_pm_enabled = false
+      item = DisifyEmailProtection::ReviewItem.create!(
+        user_id: user.id,
+        email_domain: DisifyEmailProtection::Normalizer.domain(user.email),
+        email_hmac: DisifyEmailProtection::Normalizer.email_hmac(user.email),
+        flow: "existing_user_scan",
+        reason: "disposable",
+        confidence: 100,
+        signals: ["blacklist_exact"],
+        state: "pending",
+        metadata: {},
+      )
+
+      sign_in(admin)
+      post "/admin/plugins/disify-email-protection/review/#{item.id}/require-change.json"
+
+      expect(response.status).to eq(200)
+      remediation = DisifyEmailProtection::EmailRemediation.find_by(user_id: user.id, active: true)
+      expect(remediation).to be_present
+      expect(remediation.email_hmac).to eq(item.email_hmac)
+      expect(item.reload.state).to eq("remediation")
+      expect(item.metadata["resolution"]).to eq("email_change_required")
+    end
+  end
+
+  describe "POST /admin/plugins/disify-email-protection/review/bulk-require-change.json" do
+    it "queues the bulk job only when the explicit bulk setting is enabled" do
+      item = DisifyEmailProtection::ReviewItem.create!(
+        user_id: user.id,
+        email_domain: DisifyEmailProtection::Normalizer.domain(user.email),
+        email_hmac: DisifyEmailProtection::Normalizer.email_hmac(user.email),
+        flow: "existing_user_scan",
+        reason: "disposable",
+        confidence: 100,
+        signals: [],
+        state: "pending",
+        metadata: {},
+      )
+      allow(Jobs).to receive(:enqueue)
+      sign_in(admin)
+
+      SiteSetting.disify_email_protection_bulk_remediation_enabled = false
+      post "/admin/plugins/disify-email-protection/review/bulk-require-change.json", params: { state: "pending" }
+      expect(response.status).to eq(403)
+
+      SiteSetting.disify_email_protection_bulk_remediation_enabled = true
+      post "/admin/plugins/disify-email-protection/review/bulk-require-change.json", params: { state: "pending" }
+      expect(response.status).to eq(200)
+      expect(response.parsed_body["candidate_count"]).to eq(1)
+      expect(Jobs).to have_received(:enqueue).with(
+        :disify_email_protection_bulk_require_change,
+        hash_including(actor_id: admin.id, state: "pending", review_ids: [item.id]),
+      )
+      expect(item.reload.state).to eq("pending")
+    end
+  end
+
   describe "admin route access-control matrix" do
     it "denies a normal user across all plugin JSON admin endpoints" do
       sign_in(user)
@@ -178,6 +238,9 @@ RSpec.describe DisifyEmailProtection::AdminController do
         [:post, "/admin/plugins/disify-email-protection/review/1/approve-permanent.json", {}],
         [:post, "/admin/plugins/disify-email-protection/review/1/reject.json", {}],
         [:post, "/admin/plugins/disify-email-protection/review/1/recheck.json", {}],
+        [:post, "/admin/plugins/disify-email-protection/review/1/require-change.json", {}],
+        [:post, "/admin/plugins/disify-email-protection/review/1/cancel-remediation.json", {}],
+        [:post, "/admin/plugins/disify-email-protection/review/bulk-require-change.json", { state: "pending" }],
         [:get, "/admin/plugins/disify-email-protection/tools.json", {}],
         [:get, "/admin/plugins/disify-email-protection/tools/scan/status.json", {}],
         [:post, "/admin/plugins/disify-email-protection/tools/check.json", { email: "member@example.com" }],

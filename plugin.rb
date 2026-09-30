@@ -2,7 +2,7 @@
 
 # name: Discourse-Disify-Email-Protection-Plugin
 # about: Adds disposable-email and deliverability protection to Discourse using DISIFY.
-# version: 0.1.20
+# version: 0.1.21
 # authors: Chris
 
 add_admin_route "admin.disify_email_protection.title", "disifyEmailProtection"
@@ -11,7 +11,7 @@ enabled_site_setting :disify_email_protection_enabled
 
 module ::DisifyEmailProtection
   PLUGIN_NAME = "Discourse-Disify-Email-Protection-Plugin"
-  PLUGIN_VERSION = "0.1.20"
+  PLUGIN_VERSION = "0.1.21"
   API_BASE_URL = "https://disify.com/api"
   STORE_NAMESPACE = "disify_email_protection"
   TRUSTED_ALIAS_DOMAINS = %w[
@@ -37,6 +37,7 @@ after_initialize do
   require_dependency File.expand_path("app/models/disify_email_protection/review_item.rb", __dir__)
   require_dependency File.expand_path("app/models/disify_email_protection/daily_stat.rb", __dir__)
   require_dependency File.expand_path("app/models/disify_email_protection/policy_exception.rb", __dir__)
+  require_dependency File.expand_path("app/models/disify_email_protection/email_remediation.rb", __dir__)
   require_dependency File.expand_path("app/controllers/disify_email_protection/admin_controller.rb", __dir__)
 
   require_relative "lib/disify_email_protection/normalizer"
@@ -56,18 +57,38 @@ after_initialize do
   require_relative "lib/disify_email_protection/existing_user_scan"
   require_relative "lib/disify_email_protection/moderator_digest"
   require_relative "lib/disify_email_protection/review_queue_notifier"
+  require_relative "lib/disify_email_protection/remediation_manager"
+  require_relative "lib/disify_email_protection/remediation_notifier"
+  require_relative "lib/disify_email_protection/request_restriction"
 
   require_relative "app/jobs/regular/disify_existing_user_scan"
   require_relative "app/jobs/regular/disify_email_protection_create_review"
   require_relative "app/jobs/regular/disify_email_protection_record_validation_result"
   require_relative "app/jobs/regular/disify_email_protection_anonymize_cleanup"
+  require_relative "app/jobs/regular/disify_email_protection_process_remediation_email_change"
+  require_relative "app/jobs/regular/disify_email_protection_verify_remediation"
+  require_relative "app/jobs/regular/disify_email_protection_bulk_require_change"
   require_relative "app/jobs/scheduled/disify_email_protection_cleanup"
   require_relative "app/jobs/scheduled/disify_email_protection_health_check"
   require_relative "app/jobs/scheduled/disify_email_protection_moderator_digest"
   require_relative "app/jobs/scheduled/disify_email_protection_review_queue_notification"
+  require_relative "app/jobs/scheduled/disify_email_protection_remediation_maintenance"
 
   require_relative "app/services/problem_check/disify_email_protection_operational_health"
   register_problem_check ProblemCheck::DisifyEmailProtectionOperationalHealth
+
+  add_to_serializer(:current_user, :disify_email_remediation) do
+    ::DisifyEmailProtection::RemediationManager.public_payload(object)
+  end
+
+  add_to_class(:application_controller, :disify_email_protection_enforce_remediation) do
+    ::DisifyEmailProtection::RequestRestriction.enforce!(self)
+  end
+  unless ::ApplicationController._process_action_callbacks.any? { |callback|
+           callback.kind == :before && callback.filter == :disify_email_protection_enforce_remediation
+         }
+    ::ApplicationController.before_action :disify_email_protection_enforce_remediation
+  end
 
   validate("UserEmail", :disify_email_protection_validation) do
     next if !SiteSetting.disify_email_protection_enabled
@@ -125,6 +146,14 @@ after_initialize do
     when "review"
       errors.add(:email, I18n.t("disify_email_protection.errors.review_required"))
     end
+  end
+
+  on(:user_updated) do |user_record, changed_fields|
+    next if user_record.blank?
+    next unless Array(changed_fields).map(&:to_s).include?("email")
+    next unless ::DisifyEmailProtection::EmailRemediation.active.where(user_id: user_record.id).exists?
+
+    Jobs.enqueue(:disify_email_protection_process_remediation_email_change, user_id: user_record.id)
   end
 
   # Privacy/lifecycle cleanup must run even when the protection setting is temporarily
@@ -195,6 +224,18 @@ after_initialize do
          constraints: AdminConstraint.new
     post "/admin/plugins/disify-email-protection/review/:id/recheck" =>
            "disify_email_protection/admin#recheck_review",
+         defaults: { format: :json },
+         constraints: AdminConstraint.new
+    post "/admin/plugins/disify-email-protection/review/:id/require-change" =>
+           "disify_email_protection/admin#require_email_change",
+         defaults: { format: :json },
+         constraints: AdminConstraint.new
+    post "/admin/plugins/disify-email-protection/review/:id/cancel-remediation" =>
+           "disify_email_protection/admin#cancel_email_remediation",
+         defaults: { format: :json },
+         constraints: AdminConstraint.new
+    post "/admin/plugins/disify-email-protection/review/bulk-require-change" =>
+           "disify_email_protection/admin#bulk_require_email_change",
          defaults: { format: :json },
          constraints: AdminConstraint.new
     get "/admin/plugins/disify-email-protection/tools" =>

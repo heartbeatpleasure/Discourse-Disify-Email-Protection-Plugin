@@ -23,8 +23,18 @@ module Jobs
         resolved_at: now,
         updated_at: now,
       )
+      active_review_ids =
+        ::DisifyEmailProtection::EmailRemediation.active.where.not(review_item_id: nil).select(:review_item_id)
       delete_in_batches(
-        ::DisifyEmailProtection::ReviewItem.where.not(state: "pending").where("updated_at < ?", review_cutoff),
+        ::DisifyEmailProtection::ReviewItem
+          .where.not(state: "pending")
+          .where.not(id: active_review_ids)
+          .where("updated_at < ?", review_cutoff),
+      )
+      delete_in_batches(
+        ::DisifyEmailProtection::EmailRemediation
+          .where(active: false)
+          .where("updated_at < ?", review_cutoff),
       )
       delete_in_batches(
         ::DisifyEmailProtection::DailyStat.where(

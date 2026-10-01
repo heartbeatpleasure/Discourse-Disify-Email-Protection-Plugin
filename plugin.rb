@@ -2,7 +2,7 @@
 
 # name: Discourse-Disify-Email-Protection-Plugin
 # about: Adds disposable-email and deliverability protection to Discourse using DISIFY.
-# version: 0.1.21
+# version: 0.1.22
 # authors: Chris
 
 add_admin_route "admin.disify_email_protection.title", "disifyEmailProtection"
@@ -11,7 +11,7 @@ enabled_site_setting :disify_email_protection_enabled
 
 module ::DisifyEmailProtection
   PLUGIN_NAME = "Discourse-Disify-Email-Protection-Plugin"
-  PLUGIN_VERSION = "0.1.21"
+  PLUGIN_VERSION = "0.1.22"
   API_BASE_URL = "https://disify.com/api"
   STORE_NAMESPACE = "disify_email_protection"
   TRUSTED_ALIAS_DOMAINS = %w[
@@ -92,7 +92,16 @@ after_initialize do
 
   validate("UserEmail", :disify_email_protection_validation) do
     next if !SiteSetting.disify_email_protection_enabled
-    next if email.blank? || !will_save_change_to_email?
+
+    # Discourse validates the email value itself only when the address changes.
+    # Promoting an existing secondary address to primary changes only `primary`,
+    # so without this explicit check a legacy/risky secondary address could bypass
+    # the protection policy by being promoted back to primary.
+    email_value_changed = will_save_change_to_email?
+    primary_promoted =
+      persisted? && respond_to?(:will_save_change_to_primary?) &&
+        will_save_change_to_primary? && primary?
+    next if email.blank? || (!email_value_changed && !primary_promoted)
 
     user_record = user
     staged_check_enabled =

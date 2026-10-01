@@ -105,6 +105,41 @@ RSpec.describe "DISIFY UserEmail validation" do
     staged_user.primary_email.update!(email: "persisted-staged-new@example.com")
   end
 
+
+  it "checks a legacy secondary address when it is promoted to primary" do
+    SiteSetting.disify_email_protection_enabled = false
+    secondary = UserEmail.create!(
+      user: user,
+      email: "legacy-disposable@example.com",
+      primary: false,
+    )
+    SiteSetting.disify_email_protection_enabled = true
+
+    result = DisifyEmailProtection::Decision::DecisionResult.new(
+      decision: "block",
+      reason: "disposable",
+      confidence: 100,
+      signals: ["blacklist"],
+      source: "api",
+      status: "success",
+      user_message_key: "disposable_email",
+      payload: {},
+    )
+    expect(DisifyEmailProtection::Decision).to receive(:evaluate).with(
+      hash_including(email: "legacy-disposable@example.com", user: user, flow: "email_change"),
+    ).once.and_return(result)
+
+    expect do
+      User.transaction do
+        user.primary_email.update!(primary: false)
+        secondary.update!(primary: true)
+      end
+    end.to raise_error(ActiveRecord::RecordInvalid)
+
+    expect(user.reload.primary_email.email).not_to eq("legacy-disposable@example.com")
+    expect(secondary.reload.primary).to eq(false)
+  end
+
   it "preserves an explicit user-level email-validation skip for staged auth flows" do
     SiteSetting.disify_email_protection_check_staged_users = true
     expect(DisifyEmailProtection::Decision).not_to receive(:evaluate)
